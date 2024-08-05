@@ -1,0 +1,18 @@
+comment "--" ;
+
+layout toplevel ;
+
+token VarIdent letter (letter | digit | '_' | '\'')* ;
+
+-- A Program is a list of Commands
+AProgram. Program ::= [Command] ;
+
+-- Commands for checking and computing
+CommandCompute. Command ::= "compute" Term ;
+terminator Command ";" ;
+
+-- Terms in the lambda calculus
+Var.    Term ::= VarIdent ;
+Lam.    Term ::= "λ" VarIdent "." Term ;
+App.    Term ::= Term Term ;
+Paren.  Term ::= "(" Term ")" ;
