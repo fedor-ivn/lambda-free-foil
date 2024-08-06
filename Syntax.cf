@@ -12,10 +12,12 @@ CommandCompute. Command ::= "compute" Term ;
 terminator Command ";" ;
 
 -- Terms in the lambda calculus
-Var.    Term ::= VarIdent ;
 Lam.    Term ::= "λ" Pattern "." ScopedTerm ;
-App.    Term ::= Term Term ;
-_.  Term ::= "(" Term ")" ;
+App.    Term1 ::= Term1 Term2 ;  -- x y z  =  (x y) z  ≠  x (y z)
+Var.    Term2 ::= VarIdent ;
+_.  Term ::= Term1 ;
+_.  Term1 ::= Term2 ;
+_.  Term2 ::= "(" Term ")" ;
 
 AScopedTerm. ScopedTerm ::= Term ;
 APattern. Pattern ::= VarIdent ;

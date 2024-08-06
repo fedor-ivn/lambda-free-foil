@@ -29,9 +29,9 @@ transCommand x = case x of
 
 transTerm :: Language.Lambda.Syntax.Abs.Term -> Result
 transTerm x = case x of
-  Language.Lambda.Syntax.Abs.Var varident -> failure x
   Language.Lambda.Syntax.Abs.Lam pattern_ scopedterm -> failure x
   Language.Lambda.Syntax.Abs.App term1 term2 -> failure x
+  Language.Lambda.Syntax.Abs.Var varident -> failure x
 
 transScopedTerm :: Language.Lambda.Syntax.Abs.ScopedTerm -> Result
 transScopedTerm x = case x of

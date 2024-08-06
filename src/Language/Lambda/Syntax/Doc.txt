@@ -39,9 +39,11 @@ All other symbols are terminals.
   | //Command// | -> | ``compute`` //Term//
   | //[Command]// | -> | **eps**
   |  |  **|**  | //Command// ``;`` //[Command]//
-  | //Term// | -> | //VarIdent//
-  |  |  **|**  | ``λ`` //Pattern// ``.`` //ScopedTerm//
-  |  |  **|**  | //Term// //Term//
+  | //Term// | -> | ``λ`` //Pattern// ``.`` //ScopedTerm//
+  |  |  **|**  | //Term1//
+  | //Term1// | -> | //Term1// //Term2//
+  |  |  **|**  | //Term2//
+  | //Term2// | -> | //VarIdent//
   |  |  **|**  | ``(`` //Term// ``)``
   | //ScopedTerm// | -> | //Term//
   | //Pattern// | -> | //VarIdent//
