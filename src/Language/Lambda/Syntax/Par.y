@@ -12,6 +12,8 @@ module Language.Lambda.Syntax.Par
   , pCommand
   , pListCommand
   , pTerm
+  , pScopedTerm
+  , pPattern
   ) where
 
 import Prelude
@@ -25,6 +27,8 @@ import Language.Lambda.Syntax.Lex
 %name pCommand Command
 %name pListCommand ListCommand
 %name pTerm Term
+%name pScopedTerm ScopedTerm
+%name pPattern Pattern
 -- no lexer declaration
 %monad { Err } { (>>=) } { return }
 %tokentype {Token}
@@ -56,9 +60,15 @@ ListCommand
 Term :: { Language.Lambda.Syntax.Abs.Term }
 Term
   : VarIdent { Language.Lambda.Syntax.Abs.Var $1 }
-  | 'λ' VarIdent '.' Term { Language.Lambda.Syntax.Abs.Lam $2 $4 }
+  | 'λ' Pattern '.' ScopedTerm { Language.Lambda.Syntax.Abs.Lam $2 $4 }
   | Term Term { Language.Lambda.Syntax.Abs.App $1 $2 }
   | '(' Term ')' { Language.Lambda.Syntax.Abs.Paren $2 }
+
+ScopedTerm :: { Language.Lambda.Syntax.Abs.ScopedTerm }
+ScopedTerm : Term { Language.Lambda.Syntax.Abs.AScopedTerm $1 }
+
+Pattern :: { Language.Lambda.Syntax.Abs.Pattern }
+Pattern : VarIdent { Language.Lambda.Syntax.Abs.APattern $1 }
 
 {
 

@@ -17,7 +17,16 @@ data Command = CommandCompute Term
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 data Term
-    = Var VarIdent | Lam VarIdent Term | App Term Term | Paren Term
+    = Var VarIdent
+    | Lam Pattern ScopedTerm
+    | App Term Term
+    | Paren Term
+  deriving (C.Eq, C.Ord, C.Show, C.Read)
+
+data ScopedTerm = AScopedTerm Term
+  deriving (C.Eq, C.Ord, C.Show, C.Read)
+
+data Pattern = APattern VarIdent
   deriving (C.Eq, C.Ord, C.Show, C.Read)
 
 newtype VarIdent = VarIdent String

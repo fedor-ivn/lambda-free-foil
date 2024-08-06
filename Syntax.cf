@@ -13,6 +13,9 @@ terminator Command ";" ;
 
 -- Terms in the lambda calculus
 Var.    Term ::= VarIdent ;
-Lam.    Term ::= "λ" VarIdent "." Term ;
+Lam.    Term ::= "λ" Pattern "." ScopedTerm ;
 App.    Term ::= Term Term ;
 Paren.  Term ::= "(" Term ")" ;
+
+AScopedTerm. ScopedTerm ::= Term ;
+APattern. Pattern ::= VarIdent ;

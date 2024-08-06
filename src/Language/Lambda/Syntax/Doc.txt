@@ -40,9 +40,11 @@ All other symbols are terminals.
   | //[Command]// | -> | **eps**
   |  |  **|**  | //Command// ``;`` //[Command]//
   | //Term// | -> | //VarIdent//
-  |  |  **|**  | ``λ`` //VarIdent// ``.`` //Term//
+  |  |  **|**  | ``λ`` //Pattern// ``.`` //ScopedTerm//
   |  |  **|**  | //Term// //Term//
   |  |  **|**  | ``(`` //Term// ``)``
+  | //ScopedTerm// | -> | //Term//
+  | //Pattern// | -> | //VarIdent//
 
 
 

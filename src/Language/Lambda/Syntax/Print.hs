@@ -154,6 +154,14 @@ instance Print [Language.Lambda.Syntax.Abs.Command] where
 instance Print Language.Lambda.Syntax.Abs.Term where
   prt i = \case
     Language.Lambda.Syntax.Abs.Var varident -> prPrec i 0 (concatD [prt 0 varident])
-    Language.Lambda.Syntax.Abs.Lam varident term -> prPrec i 0 (concatD [doc (showString "\955"), prt 0 varident, doc (showString "."), prt 0 term])
+    Language.Lambda.Syntax.Abs.Lam pattern_ scopedterm -> prPrec i 0 (concatD [doc (showString "\955"), prt 0 pattern_, doc (showString "."), prt 0 scopedterm])
     Language.Lambda.Syntax.Abs.App term1 term2 -> prPrec i 0 (concatD [prt 0 term1, prt 0 term2])
     Language.Lambda.Syntax.Abs.Paren term -> prPrec i 0 (concatD [doc (showString "("), prt 0 term, doc (showString ")")])
+
+instance Print Language.Lambda.Syntax.Abs.ScopedTerm where
+  prt i = \case
+    Language.Lambda.Syntax.Abs.AScopedTerm term -> prPrec i 0 (concatD [prt 0 term])
+
+instance Print Language.Lambda.Syntax.Abs.Pattern where
+  prt i = \case
+    Language.Lambda.Syntax.Abs.APattern varident -> prPrec i 0 (concatD [prt 0 varident])
