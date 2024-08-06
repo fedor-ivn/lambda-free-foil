@@ -1,6 +1,6 @@
 module Main (main) where
 
-import qualified Language.Lambda.Syntax.Test as Test
+import qualified Language.Lambda.Impl as Impl
 
 main :: IO ()
-main = Test.main
+main = Impl.main

@@ -14,7 +14,7 @@ maintainer:     example@example.com
 copyright:      2024 Author name here
 license:        BSD-3-Clause
 license-file:   LICENSE
-build-type:     Simple
+build-type:     Custom
 extra-source-files:
     README.md
     CHANGELOG.md
@@ -23,17 +23,21 @@ source-repository head
   type: git
   location: https://github.com/githubuser/free-foil-experiments
 
+custom-setup
+  setup-depends:
+      Cabal >=2.4.0.1 && <4.0
+    , PyF
+    , base >=4.11.0.0 && <5.0
+    , process >=1.6.3.0
+
 library
   exposed-modules:
       Language.Lambda.Impl
       Language.Lambda.Syntax.Abs
-      Language.Lambda.Syntax.ErrM
       Language.Lambda.Syntax.Layout
       Language.Lambda.Syntax.Lex
       Language.Lambda.Syntax.Par
       Language.Lambda.Syntax.Print
-      Language.Lambda.Syntax.Skel
-      Language.Lambda.Syntax.Test
   other-modules:
       Paths_free_foil_experiments
   autogen-modules:

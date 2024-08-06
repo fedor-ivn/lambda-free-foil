@@ -97,3 +97,24 @@ whnf scope = \case
          in whnf scope (substitute scope subst body)
       f' -> App f' x
   t -> t
+
+
+main :: IO ()
+main = do
+  input <- getContents
+  let tokens = Raw.resolveLayout True $ Raw.myLexer input
+  case Raw.pProgram tokens of
+    Left err -> do
+      putStrLn "\nParse              Failed...\n"
+      -- putStrLn "Tokens:"
+      -- mapM_ (putStrLn . showPosToken . mkPosToken) tokens
+      putStrLn err
+      exitFailure
+    Right program -> do
+      putStrLn "\nParse Successful!"
+      showTree program
+  where
+    showTree :: (Show a, Raw.Print a) => a -> IO ()
+    showTree tree = do
+      putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
+      putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree

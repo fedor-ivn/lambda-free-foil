@@ -1,14 +1,14 @@
-name:                free-foil-experiments
-version:             0.1.0.0
-github:              "githubuser/free-foil-experiments"
-license:             BSD-3-Clause
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2024 Author name here"
+name: free-foil-experiments
+version: 0.1.0.0
+github: "githubuser/free-foil-experiments"
+license: BSD-3-Clause
+author: "Author name here"
+maintainer: "example@example.com"
+copyright: "2024 Author name here"
 
 extra-source-files:
-- README.md
-- CHANGELOG.md
+  - README.md
+  - CHANGELOG.md
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -17,7 +17,14 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/free-foil-experiments#readme>
+description: Please see the README on GitHub at <https://github.com/githubuser/free-foil-experiments#readme>
+
+custom-setup:
+  dependencies:
+    base: ">= 4.11.0.0 && < 5.0"
+    Cabal: ">= 2.4.0.1 && < 4.0"
+    process: ">= 1.6.3.0"
+    PyF:
 
 dependencies:
   base: ">= 4.7 && < 5"
@@ -26,50 +33,49 @@ dependencies:
   bifunctors:
   containers:
 
-
 build-tools:
   alex: ">= 3.2.4"
   happy: ">= 1.19.9"
   BNFC:bnfc: ">= 2.9.4.1"
 
 ghc-options:
-- -Wall
-- -Wcompat
-- -Widentities
-- -Wincomplete-record-updates
-- -Wincomplete-uni-patterns
-- -Wmissing-export-lists
-- -Wmissing-home-modules
-- -Wpartial-fields
-- -Wredundant-constraints
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-export-lists
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
 
 library:
   source-dirs: src
-  # when:
-  #   - condition: false
-  #     other-modules:
-  #       - Language.LambdaPi.Syntax.Test
-  #       - Language.LambdaPi.Syntax.ErrM
-  #       - Language.LambdaPi.Syntax.Skel
-        
+  when:
+    - condition: false
+      other-modules:
+        - Language.Lambda.Syntax.Test
+        - Language.Lambda.Syntax.ErrM
+        - Language.Lambda.Syntax.Skel
+
 executables:
   free-foil-experiments-exe:
-    main:                Main.hs
-    source-dirs:         app
+    main: Main.hs
+    source-dirs: app
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
     dependencies:
-    - free-foil-experiments
+      - free-foil-experiments
 
 tests:
   free-foil-experiments-test:
-    main:                Spec.hs
-    source-dirs:         test
+    main: Spec.hs
+    source-dirs: test
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
     dependencies:
-    - free-foil-experiments
+      - free-foil-experiments

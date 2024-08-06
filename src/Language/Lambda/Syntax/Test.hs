@@ -2,7 +2,7 @@
 
 -- | Program to test parser.
 
-module Language.Lambda.Syntax.Test where
+module Main where
 
 import Prelude
   ( ($), (.)

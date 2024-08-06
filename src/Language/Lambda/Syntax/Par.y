@@ -62,7 +62,7 @@ Term
   : VarIdent { Language.Lambda.Syntax.Abs.Var $1 }
   | 'λ' Pattern '.' ScopedTerm { Language.Lambda.Syntax.Abs.Lam $2 $4 }
   | Term Term { Language.Lambda.Syntax.Abs.App $1 $2 }
-  | '(' Term ')' { Language.Lambda.Syntax.Abs.Paren $2 }
+  | '(' Term ')' { $2 }
 
 ScopedTerm :: { Language.Lambda.Syntax.Abs.ScopedTerm }
 ScopedTerm : Term { Language.Lambda.Syntax.Abs.AScopedTerm $1 }

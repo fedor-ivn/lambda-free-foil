@@ -15,7 +15,7 @@ terminator Command ";" ;
 Var.    Term ::= VarIdent ;
 Lam.    Term ::= "λ" Pattern "." ScopedTerm ;
 App.    Term ::= Term Term ;
-Paren.  Term ::= "(" Term ")" ;
+_.  Term ::= "(" Term ")" ;
 
 AScopedTerm. ScopedTerm ::= Term ;
 APattern. Pattern ::= VarIdent ;
