@@ -13,6 +13,7 @@ terminator Command ";" ;
 
 -- Terms in the lambda calculus
 Lam.    Term ::= "λ" Pattern "." ScopedTerm ;
+Let.    Term ::= "let" Pattern "=" Term "in" ScopedTerm ;
 App.    Term1 ::= Term1 Term2 ;  -- x y z  =  (x y) z  ≠  x (y z)
 Var.    Term2 ::= VarIdent ;
 _.  Term ::= Term1 ;

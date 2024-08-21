@@ -41,8 +41,11 @@ import Language.Lambda.Syntax.Lex
   ')'        { PT _ (TS _ 2)        }
   '.'        { PT _ (TS _ 3)        }
   ';'        { PT _ (TS _ 4)        }
-  'compute'  { PT _ (TS _ 5)        }
-  'λ'        { PT _ (TS _ 6)        }
+  '='        { PT _ (TS _ 5)        }
+  'compute'  { PT _ (TS _ 6)        }
+  'in'       { PT _ (TS _ 7)        }
+  'let'      { PT _ (TS _ 8)        }
+  'λ'        { PT _ (TS _ 9)        }
   L_VarIdent { PT _ (T_VarIdent $$) }
 
 %%
@@ -64,6 +67,7 @@ ListCommand
 Term :: { Language.Lambda.Syntax.Abs.Term }
 Term
   : 'λ' Pattern '.' ScopedTerm { Language.Lambda.Syntax.Abs.Lam $2 $4 }
+  | 'let' Pattern '=' Term 'in' ScopedTerm { Language.Lambda.Syntax.Abs.Let $2 $4 $6 }
   | Term1 { $1 }
 
 Term1 :: { Language.Lambda.Syntax.Abs.Term }

@@ -21,10 +21,11 @@ VarIdent literals are recognized by the regular expression
 The set of reserved words is the set of terminals appearing in the grammar. Those reserved words that consist of non-letter characters are called symbols, and they are treated in a different way from those that are similar to identifiers. The lexer follows rules familiar from languages like Haskell, C, and Java, including longest match and spacing conventions.
 
 The reserved words used in Syntax are the following:
-  | ``compute`` | ``λ`` |  |
+  | ``compute`` | ``in`` | ``let`` | ``λ``
 
 The symbols used in Syntax are the following:
-  | ; | . | ( | )
+  | ; | . | = | (
+  | ) |  |  |
 
 ===Comments===
 Single-line comments begin with --.There are no multiple-line comments in the grammar.
@@ -40,6 +41,7 @@ All other symbols are terminals.
   | //[Command]// | -> | **eps**
   |  |  **|**  | //Command// ``;`` //[Command]//
   | //Term// | -> | ``λ`` //Pattern// ``.`` //ScopedTerm//
+  |  |  **|**  | ``let`` //Pattern// ``=`` //Term// ``in`` //ScopedTerm//
   |  |  **|**  | //Term1//
   | //Term1// | -> | //Term1// //Term2//
   |  |  **|**  | //Term2//

@@ -21,7 +21,11 @@ data Program = AProgram [Command]
 data Command = CommandCompute Term
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
 
-data Term = Lam Pattern ScopedTerm | App Term Term | Var VarIdent
+data Term
+    = Lam Pattern ScopedTerm
+    | Let Pattern Term ScopedTerm
+    | App Term Term
+    | Var VarIdent
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
 
 data ScopedTerm = AScopedTerm Term

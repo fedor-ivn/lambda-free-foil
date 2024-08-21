@@ -171,6 +171,8 @@ whnf scope = \case
 -- λ x1 . λ x3 . x3
 -- >>> bnf Foil.emptyScope "(λ A . λ x . x) (λ A . A)"
 -- λ x1 . x1
+-- >>> bnf Foil.emptyScope "let f = λ A . λ x . x in f (λ A . A) (λ A . A)"
+-- λ x1 . x1
 bnf :: (Foil.Distinct n) => Foil.Scope n -> Term n -> Term n
 bnf scope = \case
   App f x ->
@@ -183,6 +185,10 @@ bnf scope = \case
     | Foil.Distinct <- Foil.assertDistinct binder ->
         let extendedScope = Foil.extendScope binder scope
          in Lam binder (bnf extendedScope body)
+  Let value binder body
+    | Foil.Distinct <- Foil.assertDistinct binder ->
+        let subst = Foil.addSubst Foil.identitySubst binder value
+         in bnf scope (substitute scope subst body)
   t -> t
 
 interpretCommand :: Raw.Command -> IO ()
