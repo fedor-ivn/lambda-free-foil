@@ -1,12 +1,12 @@
-{-# OPTIONS_GHC -ddump-splices #-}
-{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE KindSignatures    #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE PatternSynonyms   #-}
-{-# LANGUAGE RankNTypes        #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -ddump-splices #-}
 
 -- | Free foil implementation of the \(\lambda)-calculus (with pairs).
 --
@@ -34,20 +34,20 @@
 -- wildcard patterns and variable patterns are handled in this implementation.
 module Language.Lambda.Impl where
 
-import           Control.Monad.Foil            (Distinct)
-import qualified Control.Monad.Foil            as Foil
-import           Control.Monad.Free.Foil
-import           Control.Monad.Free.Foil.TH
-import           Data.Bifunctor.TH
-import           Data.Map                      (Map)
-import qualified Data.Map                      as Map
-import           Data.String                   (IsString (..))
-import qualified Language.Lambda.Syntax.Abs    as Raw
+import Control.Monad.Foil (Distinct)
+import qualified Control.Monad.Foil as Foil
+import Control.Monad.Free.Foil
+import Control.Monad.Free.Foil.TH
+import Data.Bifunctor.TH
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.String (IsString (..))
+import qualified Language.Lambda.Syntax.Abs as Raw
 import qualified Language.Lambda.Syntax.Layout as Raw
-import qualified Language.Lambda.Syntax.Lex    as Raw
-import qualified Language.Lambda.Syntax.Par    as Raw
-import qualified Language.Lambda.Syntax.Print  as Raw
-import           System.Exit                   (exitFailure)
+import qualified Language.Lambda.Syntax.Lex as Raw
+import qualified Language.Lambda.Syntax.Par as Raw
+import qualified Language.Lambda.Syntax.Print as Raw
+import System.Exit (exitFailure)
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -61,6 +61,7 @@ import           System.Exit                   (exitFailure)
 -- ** Signature
 
 mkSignature ''Raw.Term ''Raw.VarIdent ''Raw.ScopedTerm ''Raw.Pattern
+
 -- data TermSig scope term
 --   = LamSig scope
 --   | AppSig term term
@@ -73,6 +74,7 @@ deriveBitraversable ''TermSig
 -- ** Pattern synonyms
 
 mkPatternSynonyms ''TermSig
+
 -- FV( (λ x. x) y )  =  { y }
 --
 -- λs. λz. s (s z)    :: Term VoidS
@@ -112,13 +114,15 @@ toTermClosed :: Raw.Term -> Term Foil.VoidS
 toTermClosed = toTerm Foil.emptyScope Map.empty
 
 fromTerm :: Term n -> Raw.Term
-fromTerm = convertFromAST convertFromTermSig
-  Raw.Var
-  Raw.APattern
-  Raw.AScopedTerm
-  (\i -> Raw.VarIdent ("x" ++ show i))
+fromTerm =
+  convertFromAST
+    convertFromTermSig
+    Raw.Var
+    Raw.APattern
+    Raw.AScopedTerm
+    (\i -> Raw.VarIdent ("x" ++ show i))
 
-lam :: Distinct n => Foil.Scope n -> (forall l. (Foil.DExt n l) => Foil.Name l -> Term l) -> Term n
+lam :: (Distinct n) => Foil.Scope n -> (forall l. (Foil.DExt n l) => Foil.Name l -> Term l) -> Term n
 lam scope makeBody = Foil.withFresh scope $ \x' ->
   let x = Foil.nameOf x'
    in Lam x' (makeBody x)
@@ -136,7 +140,7 @@ instance IsString (Term Foil.VoidS) where
 unsafeParseTerm :: String -> Term Foil.VoidS
 unsafeParseTerm input =
   case Raw.pTerm tokens of
-    Left err   -> error err
+    Left err -> error err
     Right term -> toTermClosed term
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
@@ -155,6 +159,39 @@ whnf scope = \case
       f' -> App f' x
   t -> t
 
+-- >>> bnf Foil.emptyScope "λy.λz. (λx.λy.y) y z"
+-- λ x0 . λ x1 . x1
+-- >>> bnf Foil.emptyScope "λz.λw.(λx.λy.y) z (λz.z) w"
+-- λ x0 . λ x1 . x1
+-- >>> bnf Foil.emptyScope "(λb.λx.λy.b y x) (λx.λy.x)"
+-- λ x1 . λ x2 . x2
+-- >>> bnf Foil.emptyScope "(λs.λz.s(s(s z)))(λb.λx.λy.b y x)(λx.λy.y)"
+-- λ x2 . λ x3 . x2
+-- >>> bnf Foil.emptyScope "(λs.λz.s (s z)) (λs.λz.s (s z)) (λb.λy.λx.b x y) (λy.λx.x)"
+-- λ x1 . λ x3 . x3
+-- >>> bnf Foil.emptyScope "(λ A . λ x . x) (λ A . A)"
+-- λ x1 . x1
+bnf :: (Foil.Distinct n) => Foil.Scope n -> Term n -> Term n
+bnf scope = \case
+  App f x ->
+    case bnf scope f of
+      Lam binder body ->
+        let subst = Foil.addSubst Foil.identitySubst binder x
+         in bnf scope (substitute scope subst body)
+      f' -> App f' x
+  Lam binder body
+    | Foil.Distinct <- Foil.assertDistinct binder ->
+        let extendedScope = Foil.extendScope binder scope
+         in Lam binder (bnf extendedScope body)
+  t -> t
+
+interpretCommand :: Raw.Command -> IO ()
+interpretCommand (Raw.CommandCompute term) =
+  print $ bnf Foil.emptyScope $ toTermClosed term
+
+interpretProgram :: Raw.Program -> IO ()
+interpretProgram (Raw.AProgram commands) = mapM_ interpretCommand commands
+
 main :: IO ()
 main = do
   input <- getContents
@@ -162,15 +199,28 @@ main = do
   case Raw.pProgram tokens of
     Left err -> do
       putStrLn "\nParse              Failed...\n"
-      -- putStrLn "Tokens:"
-      -- mapM_ (putStrLn . showPosToken . mkPosToken) tokens
       putStrLn err
       exitFailure
     Right program -> do
-      putStrLn "\nParse Successful!"
-      showTree program
-  where
-    showTree :: (Show a, Raw.Print a) => a -> IO ()
-    showTree tree = do
-      putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
-      putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree
+      putStrLn "\nParse Successful! Interpreting..."
+      interpretProgram program
+
+-- main :: IO ()
+-- main = do
+--   input <- getContents
+--   let tokens = Raw.resolveLayout True $ Raw.myLexer input
+--   case Raw.pProgram tokens of
+--     Left err -> do
+--       putStrLn "\nParse              Failed...\n"
+--       -- putStrLn "Tokens:"
+--       -- mapM_ (putStrLn . showPosToken . mkPosToken) tokens
+--       putStrLn err
+--       exitFailure
+--     Right program -> do
+--       putStrLn "\nParse Successful!"
+--       showTree program
+--   where
+--     showTree :: (Show a, Raw.Print a) => a -> IO ()
+--     showTree tree = do
+--       putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
+--       putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree
