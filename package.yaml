@@ -9,6 +9,7 @@ copyright: "2024 Author name here"
 extra-source-files:
   - README.md
   - CHANGELOG.md
+  - Syntax.cf
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
