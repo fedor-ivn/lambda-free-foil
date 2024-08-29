@@ -14,6 +14,7 @@ module Language.Lambda.Syntax.Par
   , pTerm
   , pTerm1
   , pTerm2
+  , pListTerm
   , pScopedTerm
   , pPattern
   ) where
@@ -31,27 +32,35 @@ import Language.Lambda.Syntax.Lex
 %name pTerm Term
 %name pTerm1 Term1
 %name pTerm2 Term2
+%name pListTerm ListTerm
 %name pScopedTerm ScopedTerm
 %name pPattern Pattern
 -- no lexer declaration
 %monad { Err } { (>>=) } { return }
 %tokentype {Token}
 %token
-  '('        { PT _ (TS _ 1)        }
-  ')'        { PT _ (TS _ 2)        }
-  '.'        { PT _ (TS _ 3)        }
-  ';'        { PT _ (TS _ 4)        }
-  '='        { PT _ (TS _ 5)        }
-  'compute'  { PT _ (TS _ 6)        }
-  'in'       { PT _ (TS _ 7)        }
-  'let'      { PT _ (TS _ 8)        }
-  'λ'        { PT _ (TS _ 9)        }
-  L_VarIdent { PT _ (T_VarIdent $$) }
+  '('            { PT _ (TS _ 1)            }
+  ')'            { PT _ (TS _ 2)            }
+  ','            { PT _ (TS _ 3)            }
+  '.'            { PT _ (TS _ 4)            }
+  ';'            { PT _ (TS _ 5)            }
+  '='            { PT _ (TS _ 6)            }
+  '['            { PT _ (TS _ 7)            }
+  ']'            { PT _ (TS _ 8)            }
+  'compute'      { PT _ (TS _ 9)            }
+  'in'           { PT _ (TS _ 10)           }
+  'let'          { PT _ (TS _ 11)           }
+  'λ'            { PT _ (TS _ 12)           }
+  L_VarIdent     { PT _ (T_VarIdent $$)     }
+  L_MetaVarIdent { PT _ (T_MetaVarIdent $$) }
 
 %%
 
 VarIdent :: { Language.Lambda.Syntax.Abs.VarIdent }
 VarIdent  : L_VarIdent { Language.Lambda.Syntax.Abs.VarIdent $1 }
+
+MetaVarIdent :: { Language.Lambda.Syntax.Abs.MetaVarIdent }
+MetaVarIdent  : L_MetaVarIdent { Language.Lambda.Syntax.Abs.MetaVarIdent $1 }
 
 Program :: { Language.Lambda.Syntax.Abs.Program }
 Program : ListCommand { Language.Lambda.Syntax.Abs.AProgram $1 }
@@ -78,7 +87,14 @@ Term1
 Term2 :: { Language.Lambda.Syntax.Abs.Term }
 Term2
   : VarIdent { Language.Lambda.Syntax.Abs.Var $1 }
+  | MetaVarIdent '[' ListTerm ']' { Language.Lambda.Syntax.Abs.MetaVar $1 $3 }
   | '(' Term ')' { $2 }
+
+ListTerm :: { [Language.Lambda.Syntax.Abs.Term] }
+ListTerm
+  : {- empty -} { [] }
+  | Term { (:[]) $1 }
+  | Term ',' ListTerm { (:) $1 $3 }
 
 ScopedTerm :: { Language.Lambda.Syntax.Abs.ScopedTerm }
 ScopedTerm : Term { Language.Lambda.Syntax.Abs.AScopedTerm $1 }

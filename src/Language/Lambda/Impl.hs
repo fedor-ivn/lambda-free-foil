@@ -1,10 +1,13 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -ddump-splices #-}
 
@@ -36,8 +39,12 @@ module Language.Lambda.Impl where
 
 import Control.Monad.Foil (Distinct)
 import qualified Control.Monad.Foil as Foil
+import Control.Monad.Foil.Internal as FoilInternal
+import Control.Monad.Foil.TH
 import Control.Monad.Free.Foil
 import Control.Monad.Free.Foil.TH
+import Data.Biapplicative (Bifunctor (bimap))
+import Data.Bifunctor.Sum
 import Data.Bifunctor.TH
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -96,17 +103,103 @@ mkPatternSynonyms ''TermSig
 mkConvertToFreeFoil ''Raw.Term ''Raw.VarIdent ''Raw.ScopedTerm ''Raw.Pattern
 mkConvertFromFreeFoil ''Raw.Term ''Raw.VarIdent ''Raw.ScopedTerm ''Raw.Pattern
 
+-- ** Scope-safe patterns
+
+mkFoilPattern ''Raw.VarIdent ''Raw.Pattern
+deriveCoSinkable ''Raw.VarIdent ''Raw.Pattern
+mkToFoilPattern ''Raw.VarIdent ''Raw.Pattern
+mkFromFoilPattern ''Raw.VarIdent ''Raw.Pattern
+
 -- * User-defined code
 
+data MetaAppSig metavar scope term = MetaAppSig metavar [term]
+
+type AST' = AST FoilPattern
+
 -- | Scope-safe λ-term representation in scope @n@.
-type Term n = AST TermSig n
+type Term = AST' TermSig
+
+type SOAS metavar sig n = AST' (Sum sig (MetaAppSig metavar)) n
+
+type MetaTerm metavar n = SOAS metavar TermSig n
+
+data MetaAbs sig where
+  MetaAbs :: NameBinderList Foil.VoidS n -> AST' sig n -> MetaAbs sig
+
+type MetaSubst sig metavar metavar' = (metavar, MetaAbs (Sum sig (MetaAppSig metavar')))
+
+newtype MetaSubsts sig metavar metavar' = MetaSubsts
+  { getSubsts :: [MetaSubst sig metavar metavar']
+  }
+
+-- M[g, \z. z a]
+-- M[x, y] -> y x
+-- y = \z. z a
+-- x = g
+-- (\z. z a) g
+
+-- >>> substs = MetaSubsts [(Raw.MetaVarIdent "X", MetaAbs (NameBinderListCons (Raw.VarIdent "z") NameBinderListEmpty) (Var (Foil.Name 0)))]
+-- >>> applyMetaSubsts id Foil.emptyScope
+
+applyMetaSubsts ::
+  (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n) =>
+  (metavar -> metavar') ->
+  Scope n ->
+  MetaSubsts sig metavar metavar' ->
+  SOAS metavar sig n ->
+  SOAS metavar' sig n
+applyMetaSubsts rename scope substs = \case
+  Var x -> Var x
+  Node (R2 (MetaAppSig metavar args)) ->
+    let args' = map (applyMetaSubsts rename scope substs) args
+     in case lookup metavar (getSubsts substs) of
+          Just (MetaAbs names body) ->
+            let substs' =
+                  nameMapToSubsts $
+                    toNameMap Foil.emptyNameMap names args'
+             in substitute scope substs' body
+          Nothing -> Node $ R2 $ MetaAppSig (rename metavar) args'
+  Node (L2 term) -> Node $ L2 $ bimap (goScopedAST rename scope substs) (applyMetaSubsts rename scope substs) term
+  where
+    toNameMap :: Foil.NameMap n a -> NameBinderList n l -> [a] -> Foil.NameMap l a
+    toNameMap nameMap NameBinderListEmpty [] = nameMap
+    toNameMap nameMap (NameBinderListCons binder rest) (x : xs) = toNameMap fresh rest xs
+      where
+        fresh = Foil.addNameBinder binder x nameMap
+    toNameMap _ _ _ = error "mismatched name list and argument list"
+
+goScopedAST ::
+  (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n) =>
+  (metavar -> metavar') ->
+  Scope n ->
+  MetaSubsts sig metavar metavar' ->
+  ScopedAST FoilPattern (Sum sig (MetaAppSig metavar)) n ->
+  ScopedAST FoilPattern (Sum sig (MetaAppSig metavar')) n
+goScopedAST rename scope substs (ScopedAST binder body) =
+  case assertDistinct binder of
+    Foil.Distinct ->
+      ScopedAST binder (applyMetaSubsts rename newScope substs body)
+  where
+    newScope = Foil.extendScopePattern binder scope
+
+nameMapToSubsts :: Foil.NameMap i (e o) -> Foil.Substitution e i o
+nameMapToSubsts nameMap =
+  FoilInternal.UnsafeSubstitution $ FoilInternal.getNameMap nameMap
+
+-- toMetaTerm :: Term n -> MetaTerm Raw.MetaVarIdent n
+-- toMetaTerm = \case
+--   MetaVar ident terms -> Node (R2 (MetaAppSig ident terms))
+--   _ -> undefined
+
+-- fromMetaTerm :: MetaTerm Raw.MetaVarIdet -> Node (InL t)nt n -> Term n
+-- fromMetaTerm = undefined
 
 -- ** Conversion helpers
 
 -- | Convert 'Raw.Term'' into a scope-safe term.
 -- This is a special case of 'convertToAST'.
 toTerm :: (Foil.Distinct n) => Foil.Scope n -> Map Raw.VarIdent (Foil.Name n) -> Raw.Term -> Term n
-toTerm = convertToAST convertToTermSig getPatternBinder getTermFromScopedTerm
+toTerm = convertToAST convertToTermSig toFoilPattern getTermFromScopedTerm
 
 -- | Convert 'Raw.Term'' into a closed scope-safe term.
 -- This is a special case of 'toTerm''.
@@ -118,14 +211,16 @@ fromTerm =
   convertFromAST
     convertFromTermSig
     Raw.Var
-    Raw.APattern
+    fromFoilPattern
     Raw.AScopedTerm
     (\i -> Raw.VarIdent ("x" ++ show i))
 
+-- >>> lam Foil.emptyScope (\x -> App (MetaVar (Raw.MetaVarIdent "X") []) (Var x))
+-- λ x0 . X [] x0
 lam :: (Distinct n) => Foil.Scope n -> (forall l. (Foil.DExt n l) => Foil.Name l -> Term l) -> Term n
 lam scope makeBody = Foil.withFresh scope $ \x' ->
   let x = Foil.nameOf x'
-   in Lam x' (makeBody x)
+   in Lam (FoilAPattern x') (makeBody x)
 
 -- >>> lam Foil.emptyScope (\x -> App (Var x) (Var x))
 -- λ x0 . x0 x0
@@ -145,71 +240,64 @@ unsafeParseTerm input =
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
 
+-- | Match a pattern against an term.
+matchPattern :: FoilPattern n l -> Term n -> Foil.Substitution Term l n
+matchPattern (FoilAPattern x) = Foil.addSubst Foil.identitySubst x
+
 -- >>> whnf Foil.emptyScope (lam Foil.emptyScope (\x -> App (Var x) (Var x)))
 -- λ x0 . x0 x0
 -- >>> whnf Foil.emptyScope "(λs.λz.s (s z)) (λs.λz.s (s z))"
 -- λ x1 . (λ x0 . λ x1 . x0 (x0 x1)) ((λ x0 . λ x1 . x0 (x0 x1)) x1)
+-- >>> whnf Foil.emptyScope "(λs.λz.s (?s z)) (λs.λz.s (s z))"
+-- λ x1 . (λ x0 . λ x1 . x0 (x0 x1)) (?s x1)
 whnf :: (Foil.Distinct n) => Foil.Scope n -> Term n -> Term n
 whnf scope = \case
   App f x ->
     case whnf scope f of
       Lam binder body ->
-        let subst = Foil.addSubst Foil.identitySubst binder x
+        let subst = matchPattern binder x
          in whnf scope (substitute scope subst body)
       f' -> App f' x
   t -> t
 
--- >>> bnf Foil.emptyScope "λy.λz. (λx.λy.y) y z"
+-- >>> nf Foil.emptyScope "λy.λz. (λx.λy.y) y z"
 -- λ x0 . λ x1 . x1
--- >>> bnf Foil.emptyScope "λz.λw.(λx.λy.y) z (λz.z) w"
+-- >>> nf Foil.emptyScope "λz.λw.(λx.λy.y) z (λz.z) w"
 -- λ x0 . λ x1 . x1
--- >>> bnf Foil.emptyScope "(λb.λx.λy.b y x) (λx.λy.x)"
+-- >>> nf Foil.emptyScope "(λb.λx.λy.b y x) (λx.λy.x)"
 -- λ x1 . λ x2 . x2
--- >>> bnf Foil.emptyScope "(λs.λz.s(s(s z)))(λb.λx.λy.b y x)(λx.λy.y)"
+-- >>> nf Foil.emptyScope "(λs.λz.s(s(s z)))(λb.λx.λy.b y x)(λx.λy.y)"
 -- λ x2 . λ x3 . x2
--- >>> bnf Foil.emptyScope "(λs.λz.s (s z)) (λs.λz.s (s z)) (λb.λy.λx.b x y) (λy.λx.x)"
+-- >>> nf Foil.emptyScope "(λs.λz.s (s z)) (λs.λz.s (s z)) (λb.λy.λx.b x y) (λy.λx.x)"
 -- λ x1 . λ x3 . x3
--- >>> bnf Foil.emptyScope "(λ A . λ x . x) (λ A . A)"
+-- >>> nf Foil.emptyScope "(λ a . λ x . x) (λ a . a)"
 -- λ x1 . x1
--- >>> bnf Foil.emptyScope "let f = λ A . λ x . x in f (λ A . A) (λ A . A)"
+-- >>> nf Foil.emptyScope "let f = λ a . λ x . x in f (λ a . a) (λ a . a)"
 -- λ x1 . x1
-bnf :: (Foil.Distinct n) => Foil.Scope n -> Term n -> Term n
-bnf scope = \case
+nf :: (Foil.Distinct n) => Foil.Scope n -> Term n -> Term n
+nf scope = \case
   App f x ->
-    case bnf scope f of
+    case nf scope f of
       Lam binder body ->
-        let subst = Foil.addSubst Foil.identitySubst binder x
-         in bnf scope (substitute scope subst body)
+        let subst = matchPattern binder x
+         in nf scope (substitute scope subst body)
       f' -> App f' x
   Lam binder body
     | Foil.Distinct <- Foil.assertDistinct binder ->
-        let extendedScope = Foil.extendScope binder scope
-         in Lam binder (bnf extendedScope body)
+        let extendedScope = Foil.extendScopePattern binder scope
+         in Lam binder (nf extendedScope body)
   Let value binder body
     | Foil.Distinct <- Foil.assertDistinct binder ->
-        let subst = Foil.addSubst Foil.identitySubst binder value
-         in bnf scope (substitute scope subst body)
+        let subst = matchPattern binder value
+         in nf scope (substitute scope subst body)
   t -> t
 
 interpretCommand :: Raw.Command -> IO ()
 interpretCommand (Raw.CommandCompute term) =
-  print $ bnf Foil.emptyScope $ toTermClosed term
+  print $ nf Foil.emptyScope $ toTermClosed term
 
 interpretProgram :: Raw.Program -> IO ()
 interpretProgram (Raw.AProgram commands) = mapM_ interpretCommand commands
-
-main :: IO ()
-main = do
-  input <- getContents
-  let tokens = Raw.resolveLayout True $ Raw.myLexer input
-  case Raw.pProgram tokens of
-    Left err -> do
-      putStrLn "\nParse              Failed...\n"
-      putStrLn err
-      exitFailure
-    Right program -> do
-      putStrLn "\nParse Successful! Interpreting..."
-      interpretProgram program
 
 -- main :: IO ()
 -- main = do
@@ -218,15 +306,28 @@ main = do
 --   case Raw.pProgram tokens of
 --     Left err -> do
 --       putStrLn "\nParse              Failed...\n"
---       -- putStrLn "Tokens:"
---       -- mapM_ (putStrLn . showPosToken . mkPosToken) tokens
 --       putStrLn err
 --       exitFailure
 --     Right program -> do
---       putStrLn "\nParse Successful!"
---       showTree program
---   where
---     showTree :: (Show a, Raw.Print a) => a -> IO ()
---     showTree tree = do
---       putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
---       putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree
+--       putStrLn "\nParse Successful! Interpreting..."
+--       interpretProgram program
+
+main :: IO ()
+main = do
+  input <- getContents
+  let tokens = Raw.resolveLayout True $ Raw.myLexer input
+  case Raw.pProgram tokens of
+    Left err -> do
+      putStrLn "\nParse              Failed...\n"
+      -- putStrLn "Tokens:"
+      -- mapM_ (putStrLn . showPosToken . mkPosToken) tokens
+      putStrLn err
+      exitFailure
+    Right program -> do
+      putStrLn "\nParse Successful!"
+      showTree program
+  where
+    showTree :: (Show a, Raw.Print a) => a -> IO ()
+    showTree tree = do
+      putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
+      putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree

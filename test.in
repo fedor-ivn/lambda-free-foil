@@ -1,1 +1,1 @@
-compute (λ A . λ x . x) (λ A . A);
+compute (λ x . λ y . y) (λ x . X[x]);

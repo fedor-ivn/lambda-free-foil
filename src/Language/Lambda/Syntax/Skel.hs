@@ -19,6 +19,10 @@ transVarIdent :: Language.Lambda.Syntax.Abs.VarIdent -> Result
 transVarIdent x = case x of
   Language.Lambda.Syntax.Abs.VarIdent string -> failure x
 
+transMetaVarIdent :: Language.Lambda.Syntax.Abs.MetaVarIdent -> Result
+transMetaVarIdent x = case x of
+  Language.Lambda.Syntax.Abs.MetaVarIdent string -> failure x
+
 transProgram :: Language.Lambda.Syntax.Abs.Program -> Result
 transProgram x = case x of
   Language.Lambda.Syntax.Abs.AProgram commands -> failure x
@@ -33,6 +37,7 @@ transTerm x = case x of
   Language.Lambda.Syntax.Abs.Let pattern_ term scopedterm -> failure x
   Language.Lambda.Syntax.Abs.App term1 term2 -> failure x
   Language.Lambda.Syntax.Abs.Var varident -> failure x
+  Language.Lambda.Syntax.Abs.MetaVar metavarident terms -> failure x
 
 transScopedTerm :: Language.Lambda.Syntax.Abs.ScopedTerm -> Result
 transScopedTerm x = case x of

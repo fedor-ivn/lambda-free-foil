@@ -29,7 +29,7 @@ custom-setup:
 
 dependencies:
   base: ">= 4.7 && < 5"
-  free-foil: ">= 0.0.3"
+  free-foil: ">= 0.1.0"
   array: ">= 0.5.3.0"
   bifunctors:
   containers:

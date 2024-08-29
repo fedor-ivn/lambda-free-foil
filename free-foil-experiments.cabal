@@ -56,7 +56,7 @@ library
     , base >=4.7 && <5
     , bifunctors
     , containers
-    , free-foil >=0.0.3
+    , free-foil >=0.1.0
   default-language: Haskell2010
 
 executable free-foil-experiments-exe
@@ -78,7 +78,7 @@ executable free-foil-experiments-exe
     , base >=4.7 && <5
     , bifunctors
     , containers
-    , free-foil >=0.0.3
+    , free-foil >=0.1.0
     , free-foil-experiments
   default-language: Haskell2010
 
@@ -102,6 +102,6 @@ test-suite free-foil-experiments-test
     , base >=4.7 && <5
     , bifunctors
     , containers
-    , free-foil >=0.0.3
+    , free-foil >=0.1.0
     , free-foil-experiments
   default-language: Haskell2010

@@ -28,7 +28,7 @@ $u = [. \n]          -- universal: any character
 
 -- Symbols and non-identifier-like reserved words
 
-@rsyms = \λ | \; | \. | \= | \( | \)
+@rsyms = \λ | \; | \. | \= | \[ | \] | \( | \) | \,
 
 :-
 
@@ -43,8 +43,12 @@ $white+ ;
     { tok (eitherResIdent TV) }
 
 -- token VarIdent
-$l ([\' \_]| ($d | $l)) *
+$s ([\' \_]| ($d | $l)) *
     { tok (eitherResIdent T_VarIdent) }
+
+-- token MetaVarIdent
+$c ([\' \_]| ($d | $l)) *
+    { tok (eitherResIdent T_MetaVarIdent) }
 
 -- Keywords and Ident
 $l $i*
@@ -64,6 +68,7 @@ data Tok
   | TD !String                    -- ^ Float literal.
   | TC !String                    -- ^ Character literal.
   | T_VarIdent !String
+  | T_MetaVarIdent !String
   deriving (Eq, Show, Ord)
 
 -- | Smart constructor for 'Tok' for the sake of backwards compatibility.
@@ -127,6 +132,7 @@ tokenText t = case t of
   PT _ (TC s)   -> s
   Err _         -> "#error"
   PT _ (T_VarIdent s) -> s
+  PT _ (T_MetaVarIdent s) -> s
 
 -- | Convert a token to a string.
 prToken :: Token -> String
@@ -153,9 +159,11 @@ eitherResIdent tv s = treeFind resWords
 -- | The keywords and symbols of the language organized as binary search tree.
 resWords :: BTree
 resWords =
-  b "=" 5
-    (b "." 3 (b ")" 2 (b "(" 1 N N) N) (b ";" 4 N N))
-    (b "let" 8 (b "in" 7 (b "compute" 6 N N) N) (b "\955" 9 N N))
+  b "[" 7
+    (b "." 4
+       (b ")" 2 (b "(" 1 N N) (b "," 3 N N)) (b "=" 6 (b ";" 5 N N) N))
+    (b "in" 10
+       (b "compute" 9 (b "]" 8 N N) N) (b "\955" 12 (b "let" 11 N N) N))
   where
   b s n = B bs (TS bs n)
     where

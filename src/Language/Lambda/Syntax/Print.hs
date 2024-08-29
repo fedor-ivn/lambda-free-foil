@@ -139,6 +139,8 @@ instance Print Double where
 
 instance Print Language.Lambda.Syntax.Abs.VarIdent where
   prt _ (Language.Lambda.Syntax.Abs.VarIdent i) = doc $ showString i
+instance Print Language.Lambda.Syntax.Abs.MetaVarIdent where
+  prt _ (Language.Lambda.Syntax.Abs.MetaVarIdent i) = doc $ showString i
 instance Print Language.Lambda.Syntax.Abs.Program where
   prt i = \case
     Language.Lambda.Syntax.Abs.AProgram commands -> prPrec i 0 (concatD [prt 0 commands])
@@ -157,6 +159,12 @@ instance Print Language.Lambda.Syntax.Abs.Term where
     Language.Lambda.Syntax.Abs.Let pattern_ term scopedterm -> prPrec i 0 (concatD [doc (showString "let"), prt 0 pattern_, doc (showString "="), prt 0 term, doc (showString "in"), prt 0 scopedterm])
     Language.Lambda.Syntax.Abs.App term1 term2 -> prPrec i 1 (concatD [prt 1 term1, prt 2 term2])
     Language.Lambda.Syntax.Abs.Var varident -> prPrec i 2 (concatD [prt 0 varident])
+    Language.Lambda.Syntax.Abs.MetaVar metavarident terms -> prPrec i 2 (concatD [prt 0 metavarident, doc (showString "["), prt 0 terms, doc (showString "]")])
+
+instance Print [Language.Lambda.Syntax.Abs.Term] where
+  prt _ [] = concatD []
+  prt _ [x] = concatD [prt 0 x]
+  prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
 instance Print Language.Lambda.Syntax.Abs.ScopedTerm where
   prt i = \case

@@ -26,6 +26,7 @@ data Term
     | Let Pattern Term ScopedTerm
     | App Term Term
     | Var VarIdent
+    | MetaVar MetaVarIdent [Term]
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
 
 data ScopedTerm = AScopedTerm Term
@@ -35,5 +36,8 @@ data Pattern = APattern VarIdent
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
 
 newtype VarIdent = VarIdent String
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic, Data.String.IsString)
+
+newtype MetaVarIdent = MetaVarIdent String
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic, Data.String.IsString)
 

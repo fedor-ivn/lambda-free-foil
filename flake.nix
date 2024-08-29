@@ -11,6 +11,7 @@
       in with pkgs; {
         devShells.default = mkShell {
           packages = [
+            ghc982
             stack
             ghcid
             (haskell-language-server.override {
