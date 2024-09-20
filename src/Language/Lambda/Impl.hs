@@ -175,8 +175,30 @@ exampleSubst =
         (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
         (App' (Var (nameOf y)) (sink (Var (nameOf x)))))
 
--- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst]) "λg. λa. X[g, λz. z a]"
--- λ x0 . λ x1 . (λ x2 . x2 x1) x0
+
+-- X[x, y] -> (λz. y z) x
+exampleSubst2 :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- exampleSubst = "X[x, y] ↦ (λz. y z) x"
+exampleSubst2 =
+  withFresh emptyScope $ \x ->
+    let scopeX = extendScope x emptyScope
+    in withFresh (extendScope x emptyScope) $ \y ->
+      let scopeXY = extendScope y scopeX
+      in (Raw.MetaVarIdent "X", MetaAbs
+            (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
+            (App'
+              (lam' scopeXY $ \z ->
+                  App'
+                    (sink (Var (nameOf y)))
+                    (Var z))
+              (sink (Var (nameOf x)))))
+
+-- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst]) "λg. λa. λw. X[g, λz. z a]"
+-- λ x0 . λ x1 . λ x2 . (λ x3 . x3 x1) x0
+-- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst2]) "λg. λw. λa. X[g, λz. z a]"
+-- λ x0 . λ x1 . λ x2 . (λ x3 . (λ x3 . x3 x2) x3) x0
+-- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst2]) "λg. λa. X[g, λz. z a]"
+-- λ x0 . λ x1 . (λ x2 . (λ x2 . x2 x1) x2) x0
 applyMetaSubsts ::
   (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n) =>
   (metavar -> metavar') ->
@@ -275,6 +297,11 @@ lam :: (Distinct n) => Foil.Scope n -> (forall l. (Foil.DExt n l) => Foil.Name l
 lam scope makeBody = Foil.withFresh scope $ \x' ->
   let x = Foil.nameOf x'
    in Lam (FoilAPattern x') (makeBody x)
+
+lam' :: (Distinct n) => Foil.Scope n -> (forall l. (Foil.DExt n l) => Foil.Name l -> MetaTerm metavar l) -> MetaTerm metavar n
+lam' scope makeBody = Foil.withFresh scope $ \x' ->
+  let x = Foil.nameOf x'
+   in Lam' (FoilAPattern x') (makeBody x)
 
 -- >>> lam Foil.emptyScope (\x -> App (Var x) (Var x))
 -- λ x0 . x0 x0
