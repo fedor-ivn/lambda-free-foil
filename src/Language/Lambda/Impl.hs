@@ -1,15 +1,15 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DeriveTraversable  #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE PatternSynonyms    #-}
+{-# LANGUAGE RankNTypes         #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -ddump-splices #-}
+{-# LANGUAGE TemplateHaskell    #-}
+-- {-# OPTIONS_GHC -ddump-splices #-}
 
 -- | Free foil implementation of the \(\lambda)-calculus (with pairs).
 --
@@ -37,24 +37,22 @@
 -- wildcard patterns and variable patterns are handled in this implementation.
 module Language.Lambda.Impl where
 
-import Control.Monad.Foil (Distinct)
-import qualified Control.Monad.Foil as Foil
-import Control.Monad.Foil.Internal as FoilInternal
-import Control.Monad.Foil.TH
-import Control.Monad.Free.Foil
-import Control.Monad.Free.Foil.TH
-import Data.Biapplicative (Bifunctor (bimap))
-import Data.Bifunctor.Sum
-import Data.Bifunctor.TH
-import Data.Map (Map)
-import qualified Data.Map as Map
-import Data.String (IsString (..))
-import qualified Language.Lambda.Syntax.Abs as Raw
+import qualified Control.Monad.Foil            as Foil
+import           Control.Monad.Foil.Internal   as FoilInternal
+import           Control.Monad.Foil.TH
+import           Control.Monad.Free.Foil
+import           Control.Monad.Free.Foil.TH
+import           Data.Biapplicative            (Bifunctor (bimap))
+import           Data.Bifunctor.Sum
+import           Data.Bifunctor.TH
+import           Data.Map                      (Map)
+import qualified Data.Map                      as Map
+import           Data.String                   (IsString (..))
+import qualified Language.Lambda.Syntax.Abs    as Raw
 import qualified Language.Lambda.Syntax.Layout as Raw
-import qualified Language.Lambda.Syntax.Lex as Raw
-import qualified Language.Lambda.Syntax.Par as Raw
-import qualified Language.Lambda.Syntax.Print as Raw
-import System.Exit (exitFailure)
+import qualified Language.Lambda.Syntax.Par    as Raw
+import qualified Language.Lambda.Syntax.Print  as Raw
+import           System.Exit                   (exitFailure)
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -67,20 +65,37 @@ import System.Exit (exitFailure)
 
 -- ** Signature
 
-mkSignature ''Raw.Term ''Raw.VarIdent ''Raw.ScopedTerm ''Raw.Pattern
+-- mkSignature ''Raw.Term ''Raw.VarIdent ''Raw.ScopedTerm ''Raw.Pattern
+data TermSig scope term
+  = LamSig scope
+  | LetSig term scope
+  | AppSig term term
+  | MetaVarSig Raw.MetaVarIdent [term]  -- FIXME: this constructor is not generated correctly by mkSignature!
+  deriving (Functor, Foldable, Traversable)
 
 -- data TermSig scope term
 --   = LamSig scope
 --   | AppSig term term
 
-deriveZipMatch ''TermSig
+-- deriveZipMatch ''TermSig   -- FIXME: does not work for MetaVarSig
 deriveBifunctor ''TermSig
 deriveBifoldable ''TermSig
 deriveBitraversable ''TermSig
 
 -- ** Pattern synonyms
 
-mkPatternSynonyms ''TermSig
+-- mkPatternSynonyms ''TermSig   -- FIXME: does not work for MetaVarSig
+pattern App :: AST binder TermSig n -> AST binder TermSig n -> AST binder TermSig n
+pattern App f x = Node (AppSig f x)
+
+pattern Lam :: binder n l -> AST binder TermSig l -> AST binder TermSig n
+pattern Lam binder body = Node (LamSig (ScopedAST binder body))
+
+pattern Let :: AST binder TermSig n -> binder n l -> AST binder TermSig l -> AST binder TermSig n
+pattern Let term binder body = Node (LetSig term (ScopedAST binder body))
+
+pattern MetaVar :: Raw.MetaVarIdent -> [AST binder TermSig n] -> AST binder TermSig n
+pattern MetaVar metavar args = Node (MetaVarSig metavar args)
 
 -- FV( (λ x. x) y )  =  { y }
 --
@@ -113,6 +128,8 @@ mkFromFoilPattern ''Raw.VarIdent ''Raw.Pattern
 -- * User-defined code
 
 data MetaAppSig metavar scope term = MetaAppSig metavar [term]
+
+pattern MetaApp metavar args = Node (R2 (MetaAppSig metavar args))
 
 type AST' = AST FoilPattern
 
@@ -194,6 +211,24 @@ nameMapToSubsts nameMap =
 -- fromMetaTerm :: MetaTerm Raw.MetaVarIdet -> Node (InL t)nt n -> Term n
 -- fromMetaTerm = undefined
 
+-- ** Conversion helpers for 'MetaTerm'
+
+toMetaTerm :: Term n -> MetaTerm Raw.MetaVarIdent n
+toMetaTerm = \case
+  MetaVar metavar args -> MetaApp metavar (map toMetaTerm args)
+  Var name -> Var name
+  Node node -> Node (L2 (bimap toMetaScopedTerm toMetaTerm node))
+  where
+    toMetaScopedTerm (ScopedAST binder body) = ScopedAST binder (toMetaTerm body)
+
+fromMetaTerm :: MetaTerm Raw.MetaVarIdent n -> Term n
+fromMetaTerm = \case
+  Var name -> Var name
+  Node (R2 (MetaAppSig metavar args)) -> MetaVar metavar (map fromMetaTerm args)
+  Node (L2 node) -> Node (bimap fromMetaScopedTerm fromMetaTerm node)
+  where
+    fromMetaScopedTerm (ScopedAST binder body) = ScopedAST binder (fromMetaTerm body)
+
 -- ** Conversion helpers
 
 -- | Convert 'Raw.Term'' into a scope-safe term.
@@ -232,10 +267,18 @@ instance Show (Term n) where
 instance IsString (Term Foil.VoidS) where
   fromString = unsafeParseTerm
 
+instance Show (MetaTerm Raw.MetaVarIdent n) where
+  show = Raw.printTree . fromTerm . fromMetaTerm
+
+-- >>> "λy.(λx.λy.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
+-- λ x0 . (λ x1 . λ x2 . X [x1, x2 X [x2, x1]]) x0
+instance IsString (MetaTerm Raw.MetaVarIdent Foil.VoidS) where
+  fromString = toMetaTerm . unsafeParseTerm
+
 unsafeParseTerm :: String -> Term Foil.VoidS
 unsafeParseTerm input =
   case Raw.pTerm tokens of
-    Left err -> error err
+    Left err   -> error err
     Right term -> toTermClosed term
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
