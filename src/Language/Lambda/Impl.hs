@@ -129,6 +129,7 @@ mkFromFoilPattern ''Raw.VarIdent ''Raw.Pattern
 
 data MetaAppSig metavar scope term = MetaAppSig metavar [term]
 
+pattern MetaApp :: metavar -> [AST binder (Sum p (MetaAppSig metavar)) n] -> AST binder (Sum p (MetaAppSig metavar)) n
 pattern MetaApp metavar args = Node (R2 (MetaAppSig metavar args))
 
 type AST' = AST FoilPattern
