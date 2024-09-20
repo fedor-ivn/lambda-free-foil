@@ -97,6 +97,11 @@ pattern Let term binder body = Node (LetSig term (ScopedAST binder body))
 pattern MetaVar :: Raw.MetaVarIdent -> [AST binder TermSig n] -> AST binder TermSig n
 pattern MetaVar metavar args = Node (MetaVarSig metavar args)
 
+pattern App' f x = Node (L2 (AppSig f x))
+pattern Lam' binder body = Node (L2 (LamSig (ScopedAST binder body)))
+pattern Let' term binder body = Node (L2 (LetSig term (ScopedAST binder body)))
+pattern MetaVar' metavar args = Node (L2 (MetaVarSig metavar args))
+
 -- FV( (λ x. x) y )  =  { y }
 --
 -- λs. λz. s (s z)    :: Term VoidS
@@ -128,6 +133,10 @@ mkFromFoilPattern ''Raw.VarIdent ''Raw.Pattern
 -- * User-defined code
 
 data MetaAppSig metavar scope term = MetaAppSig metavar [term]
+  deriving (Functor, Foldable, Traversable)
+deriveBifunctor ''MetaAppSig
+deriveBifoldable ''MetaAppSig
+deriveBitraversable ''MetaAppSig
 
 pattern MetaApp :: metavar -> [AST binder (Sum p (MetaAppSig metavar)) n] -> AST binder (Sum p (MetaAppSig metavar)) n
 pattern MetaApp metavar args = Node (R2 (MetaAppSig metavar args))
@@ -156,9 +165,18 @@ newtype MetaSubsts sig metavar metavar' = MetaSubsts
 -- x = g
 -- (\z. z a) g
 
--- >>> substs = MetaSubsts [(Raw.MetaVarIdent "X", MetaAbs (NameBinderListCons (Raw.VarIdent "z") NameBinderListEmpty) (Var (Foil.Name 0)))]
--- >>> applyMetaSubsts id Foil.emptyScope
+-- X[x, y] -> y x
+exampleSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- exampleSubst = "X[x, y] ↦ y x"
+exampleSubst =
+  withFresh emptyScope $ \x ->
+    withFresh (extendScope x emptyScope) $ \y ->
+      (Raw.MetaVarIdent "X", MetaAbs
+        (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
+        (App' (Var (nameOf y)) (sink (Var (nameOf x)))))
 
+-- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst]) "λg. λa. X[g, λz. z a]"
+-- λ x0 . λ x1 . (λ x2 . x2 x1) x0
 applyMetaSubsts ::
   (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n) =>
   (metavar -> metavar') ->
