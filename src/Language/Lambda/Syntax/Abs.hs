@@ -35,6 +35,9 @@ data ScopedTerm = AScopedTerm Term
 data Pattern = APattern VarIdent
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
 
+data MetaSubst = MetaSubst MetaVarIdent [VarIdent] ScopedTerm
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+
 newtype VarIdent = VarIdent String
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic, Data.String.IsString)
 

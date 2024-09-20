@@ -30,6 +30,7 @@ The reserved words used in Syntax are the following:
 The symbols used in Syntax are the following:
   | ; | . | = | [
   | ] | ( | ) | ,
+  | ↦ |  |  |
 
 ===Comments===
 Single-line comments begin with --.There are no multiple-line comments in the grammar.
@@ -57,6 +58,10 @@ All other symbols are terminals.
   |  |  **|**  | //Term// ``,`` //[Term]//
   | //ScopedTerm// | -> | //Term//
   | //Pattern// | -> | //VarIdent//
+  | //MetaSubst// | -> | //MetaVarIdent// ``[`` //[VarIdent]// ``]`` ``↦`` //ScopedTerm//
+  | //[VarIdent]// | -> | **eps**
+  |  |  **|**  | //VarIdent//
+  |  |  **|**  | //VarIdent// ``,`` //[VarIdent]//
 
 
 

@@ -27,4 +27,7 @@ separator Term "," ;
 AScopedTerm. ScopedTerm ::= Term ;
 APattern. Pattern ::= VarIdent ;
 
+MetaSubst. MetaSubst ::= MetaVarIdent "[" [VarIdent] "]" "↦" ScopedTerm ;
 -- MetaSubst. MetaSubst ::= MetaVarIdent "[" [Pattern] "]" "↦" ScopedTerm ;
+
+separator VarIdent "," ;

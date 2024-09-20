@@ -46,3 +46,7 @@ transScopedTerm x = case x of
 transPattern :: Language.Lambda.Syntax.Abs.Pattern -> Result
 transPattern x = case x of
   Language.Lambda.Syntax.Abs.APattern varident -> failure x
+
+transMetaSubst :: Language.Lambda.Syntax.Abs.MetaSubst -> Result
+transMetaSubst x = case x of
+  Language.Lambda.Syntax.Abs.MetaSubst metavarident varidents scopedterm -> failure x

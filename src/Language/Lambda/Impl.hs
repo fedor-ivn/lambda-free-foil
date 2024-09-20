@@ -48,6 +48,7 @@ import           Data.Bifunctor.TH
 import           Data.Map                      (Map)
 import qualified Data.Map                      as Map
 import           Data.String                   (IsString (..))
+import           Language.Lambda.Syntax.Abs    (MetaVarIdent)
 import qualified Language.Lambda.Syntax.Abs    as Raw
 import qualified Language.Lambda.Syntax.Layout as Raw
 import qualified Language.Lambda.Syntax.Par    as Raw
@@ -153,7 +154,7 @@ type MetaTerm metavar n = SOAS metavar TermSig n
 data MetaAbs sig where
   MetaAbs :: NameBinderList Foil.VoidS n -> AST' sig n -> MetaAbs sig
 
-type MetaSubst sig metavar metavar' = (metavar, MetaAbs (Sum sig (MetaAppSig metavar')))
+newtype MetaSubst sig metavar metavar' = MetaSubst { getMetaSubst :: (metavar, MetaAbs (Sum sig (MetaAppSig metavar'))) }
 
 newtype MetaSubsts sig metavar metavar' = MetaSubsts
   { getSubsts :: [MetaSubst sig metavar metavar']
@@ -171,7 +172,7 @@ exampleSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 exampleSubst =
   withFresh emptyScope $ \x ->
     withFresh (extendScope x emptyScope) $ \y ->
-      (Raw.MetaVarIdent "X", MetaAbs
+      MetaSubst (Raw.MetaVarIdent "X", MetaAbs
         (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
         (App' (Var (nameOf y)) (sink (Var (nameOf x)))))
 
@@ -184,7 +185,7 @@ exampleSubst2 =
     let scopeX = extendScope x emptyScope
     in withFresh (extendScope x emptyScope) $ \y ->
       let scopeXY = extendScope y scopeX
-      in (Raw.MetaVarIdent "X", MetaAbs
+      in MetaSubst (Raw.MetaVarIdent "X", MetaAbs
             (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
             (App'
               (lam' scopeXY $ \z ->
@@ -210,7 +211,7 @@ applyMetaSubsts rename scope substs = \case
   Var x -> Var x
   Node (R2 (MetaAppSig metavar args)) ->
     let args' = map (applyMetaSubsts rename scope substs) args
-     in case lookup metavar (getSubsts substs) of
+     in case lookup metavar (getMetaSubst <$> getSubsts substs) of
           Just (MetaAbs names body) ->
             let substs' =
                   nameMapToSubsts $
@@ -251,6 +252,14 @@ nameMapToSubsts nameMap =
 
 -- fromMetaTerm :: MetaTerm Raw.MetaVarIdet -> Node (InL t)nt n -> Term n
 -- fromMetaTerm = undefined
+
+-- ** Conversion helpers for 'MetaSubst'
+
+toMetaSubst :: Raw.MetaSubst -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+toMetaSubst = _
+
+fromMetaSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent -> Raw.MetaSubst
+fromMetaSubst = _
 
 -- ** Conversion helpers for 'MetaTerm'
 
@@ -321,11 +330,27 @@ instance Show (MetaTerm Raw.MetaVarIdent n) where
 instance IsString (MetaTerm Raw.MetaVarIdent Foil.VoidS) where
   fromString = toMetaTerm . unsafeParseTerm
 
+instance Show (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
+  show = Raw.printTree . fromMetaSubst
+
+-- >>> "λy.(λx.λy.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
+-- λ x0 . (λ x1 . λ x2 . X [x1, x2 X [x2, x1]]) x0
+instance IsString (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
+  fromString = unsafeParseMetaSubst
+
 unsafeParseTerm :: String -> Term Foil.VoidS
 unsafeParseTerm input =
   case Raw.pTerm tokens of
     Left err   -> error err
     Right term -> toTermClosed term
+  where
+    tokens = Raw.resolveLayout False (Raw.myLexer input)
+
+unsafeParseMetaSubst :: String -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+unsafeParseMetaSubst input =
+  case Raw.pMetaSubst tokens of
+    Left err    -> error err
+    Right subst -> toMetaSubst subst
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
 

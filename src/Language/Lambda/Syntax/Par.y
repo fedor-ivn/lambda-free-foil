@@ -17,6 +17,8 @@ module Language.Lambda.Syntax.Par
   , pListTerm
   , pScopedTerm
   , pPattern
+  , pMetaSubst
+  , pListVarIdent
   ) where
 
 import Prelude
@@ -35,6 +37,8 @@ import Language.Lambda.Syntax.Lex
 %name pListTerm ListTerm
 %name pScopedTerm ScopedTerm
 %name pPattern Pattern
+%name pMetaSubst MetaSubst
+%name pListVarIdent ListVarIdent
 -- no lexer declaration
 %monad { Err } { (>>=) } { return }
 %tokentype {Token}
@@ -51,6 +55,7 @@ import Language.Lambda.Syntax.Lex
   'in'           { PT _ (TS _ 10)           }
   'let'          { PT _ (TS _ 11)           }
   'λ'            { PT _ (TS _ 12)           }
+  '↦'            { PT _ (TS _ 13)           }
   L_VarIdent     { PT _ (T_VarIdent $$)     }
   L_MetaVarIdent { PT _ (T_MetaVarIdent $$) }
 
@@ -101,6 +106,16 @@ ScopedTerm : Term { Language.Lambda.Syntax.Abs.AScopedTerm $1 }
 
 Pattern :: { Language.Lambda.Syntax.Abs.Pattern }
 Pattern : VarIdent { Language.Lambda.Syntax.Abs.APattern $1 }
+
+MetaSubst :: { Language.Lambda.Syntax.Abs.MetaSubst }
+MetaSubst
+  : MetaVarIdent '[' ListVarIdent ']' '↦' ScopedTerm { Language.Lambda.Syntax.Abs.MetaSubst $1 $3 $6 }
+
+ListVarIdent :: { [Language.Lambda.Syntax.Abs.VarIdent] }
+ListVarIdent
+  : {- empty -} { [] }
+  | VarIdent { (:[]) $1 }
+  | VarIdent ',' ListVarIdent { (:) $1 $3 }
 
 {
 

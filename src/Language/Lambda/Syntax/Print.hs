@@ -173,3 +173,12 @@ instance Print Language.Lambda.Syntax.Abs.ScopedTerm where
 instance Print Language.Lambda.Syntax.Abs.Pattern where
   prt i = \case
     Language.Lambda.Syntax.Abs.APattern varident -> prPrec i 0 (concatD [prt 0 varident])
+
+instance Print Language.Lambda.Syntax.Abs.MetaSubst where
+  prt i = \case
+    Language.Lambda.Syntax.Abs.MetaSubst metavarident varidents scopedterm -> prPrec i 0 (concatD [prt 0 metavarident, doc (showString "["), prt 0 varidents, doc (showString "]"), doc (showString "\8614"), prt 0 scopedterm])
+
+instance Print [Language.Lambda.Syntax.Abs.VarIdent] where
+  prt _ [] = concatD []
+  prt _ [x] = concatD [prt 0 x]
+  prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
