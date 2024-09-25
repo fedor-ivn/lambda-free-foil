@@ -38,13 +38,13 @@ alex_base = Data.Array.listArray (0 :: Int, 21)
   , 652
   , 770
   , 0
-  , -32
+  , -31
   , 987
   , 653
   , 982
   , 1135
   , 1130
-  , -173
+  , -174
   ]
 
 alex_table :: Data.Array.Array Int Int
@@ -62,8 +62,8 @@ alex_table = Data.Array.listArray (0 :: Int, 1390)
   , 3
   , 3
   , 1
-  , 13
   , 2
+  , 13
   , 0
   , 0
   , 0
@@ -80,7 +80,7 @@ alex_table = Data.Array.listArray (0 :: Int, 1390)
   , 0
   , 0
   , 3
-  , 0
+  , 2
   , 2
   , 2
   , 0
@@ -99,7 +99,7 @@ alex_table = Data.Array.listArray (0 :: Int, 1390)
   , 0
   , 0
   , 0
-  , 0
+  , 2
   , 2
   , 0
   , 2
@@ -1457,8 +1457,8 @@ alex_check = Data.Array.listArray (0 :: Int, 1390)
   , 12
   , 13
   , 134
-  , 45
   , 187
+  , 45
   , -1
   , -1
   , -1
@@ -1475,7 +1475,7 @@ alex_check = Data.Array.listArray (0 :: Int, 1390)
   , -1
   , -1
   , 32
-  , -1
+  , 62
   , 40
   , 41
   , -1
@@ -1494,7 +1494,7 @@ alex_check = Data.Array.listArray (0 :: Int, 1390)
   , -1
   , -1
   , -1
-  , -1
+  , 58
   , 59
   , -1
   , 61
@@ -3236,12 +3236,13 @@ eitherResIdent tv s = treeFind resWords
 -- | The keywords and symbols of the language organized as binary search tree.
 resWords :: BTree
 resWords =
-  b "[" 7
-    (b "." 4
-       (b ")" 2 (b "(" 1 N N) (b "," 3 N N)) (b "=" 6 (b ";" 5 N N) N))
-    (b "let" 11
-       (b "compute" 9 (b "]" 8 N N) (b "in" 10 N N))
-       (b "\8614" 13 (b "\955" 12 N N) N))
+  b "=" 8
+    (b "->" 4
+       (b ")" 2 (b "(" 1 N N) (b "," 3 N N))
+       (b ":" 6 (b "." 5 N N) (b ";" 7 N N)))
+    (b "in" 12
+       (b "]" 10 (b "[" 9 N N) (b "compute" 11 N N))
+       (b "\955" 14 (b "let" 13 N N) (b "\8614" 15 N N)))
   where
   b s n = B bs (TS bs n)
     where
