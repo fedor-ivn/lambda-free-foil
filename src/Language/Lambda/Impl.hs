@@ -1,14 +1,15 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveTraversable  #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE KindSignatures     #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE PatternSynonyms    #-}
-{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 -- {-# OPTIONS_GHC -ddump-splices #-}
 
 -- | Free foil implementation of the \(\lambda)-calculus (with pairs).
@@ -37,23 +38,23 @@
 -- wildcard patterns and variable patterns are handled in this implementation.
 module Language.Lambda.Impl where
 
-import qualified Control.Monad.Foil            as Foil
-import           Control.Monad.Foil.Internal   as FoilInternal
-import           Control.Monad.Foil.TH
-import           Control.Monad.Free.Foil
-import           Control.Monad.Free.Foil.TH
-import           Data.Biapplicative            (Bifunctor (bimap))
-import           Data.Bifunctor.Sum
-import           Data.Bifunctor.TH
-import           Data.Map                      (Map)
-import qualified Data.Map                      as Map
-import           Data.String                   (IsString (..))
-import           Language.Lambda.Syntax.Abs    (MetaVarIdent)
-import qualified Language.Lambda.Syntax.Abs    as Raw
+import qualified Control.Monad.Foil as Foil
+import Control.Monad.Foil.Internal as FoilInternal
+import Control.Monad.Foil.TH
+import Control.Monad.Free.Foil
+import Control.Monad.Free.Foil.TH
+import Data.Biapplicative (Bifunctor (bimap))
+import Data.Bifunctor.Sum
+import Data.Bifunctor.TH
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.String (IsString (..))
+import Language.Lambda.Syntax.Abs (MetaVarIdent)
+import qualified Language.Lambda.Syntax.Abs as Raw
 import qualified Language.Lambda.Syntax.Layout as Raw
-import qualified Language.Lambda.Syntax.Par    as Raw
-import qualified Language.Lambda.Syntax.Print  as Raw
-import           System.Exit                   (exitFailure)
+import qualified Language.Lambda.Syntax.Par as Raw
+import qualified Language.Lambda.Syntax.Print as Raw
+import System.Exit (exitFailure)
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -71,7 +72,8 @@ data TermSig scope term
   = LamSig scope
   | LetSig term scope
   | AppSig term term
-  | MetaVarSig Raw.MetaVarIdent [term]  -- FIXME: this constructor is not generated correctly by mkSignature!
+  | MetaVarSig Raw.MetaVarIdent [term] -- FIXME: this constructor is not generated correctly by mkSignature!
+  | MetaSubstSig Raw.MetaVarIdent term
   deriving (Functor, Foldable, Traversable)
 
 -- data TermSig scope term
@@ -99,8 +101,11 @@ pattern MetaVar :: Raw.MetaVarIdent -> [AST binder TermSig n] -> AST binder Term
 pattern MetaVar metavar args = Node (MetaVarSig metavar args)
 
 pattern App' f x = Node (L2 (AppSig f x))
+
 pattern Lam' binder body = Node (L2 (LamSig (ScopedAST binder body)))
+
 pattern Let' term binder body = Node (L2 (LetSig term (ScopedAST binder body)))
+
 pattern MetaVar' metavar args = Node (L2 (MetaVarSig metavar args))
 
 -- FV( (λ x. x) y )  =  { y }
@@ -135,6 +140,7 @@ mkFromFoilPattern ''Raw.VarIdent ''Raw.Pattern
 
 data MetaAppSig metavar scope term = MetaAppSig metavar [term]
   deriving (Functor, Foldable, Traversable)
+
 deriveBifunctor ''MetaAppSig
 deriveBifoldable ''MetaAppSig
 deriveBitraversable ''MetaAppSig
@@ -154,7 +160,7 @@ type MetaTerm metavar n = SOAS metavar TermSig n
 data MetaAbs sig where
   MetaAbs :: NameBinderList Foil.VoidS n -> AST' sig n -> MetaAbs sig
 
-newtype MetaSubst sig metavar metavar' = MetaSubst { getMetaSubst :: (metavar, MetaAbs (Sum sig (MetaAppSig metavar'))) }
+newtype MetaSubst sig metavar metavar' = MetaSubst {getMetaSubst :: (metavar, MetaAbs (Sum sig (MetaAppSig metavar')))}
 
 newtype MetaSubsts sig metavar metavar' = MetaSubsts
   { getSubsts :: [MetaSubst sig metavar metavar']
@@ -172,10 +178,12 @@ exampleSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 exampleSubst =
   withFresh emptyScope $ \x ->
     withFresh (extendScope x emptyScope) $ \y ->
-      MetaSubst (Raw.MetaVarIdent "X", MetaAbs
-        (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
-        (App' (Var (nameOf y)) (sink (Var (nameOf x)))))
-
+      MetaSubst
+        ( Raw.MetaVarIdent "X",
+          MetaAbs
+            (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
+            (App' (Var (nameOf y)) (sink (Var (nameOf x))))
+        )
 
 -- X[x, y] -> (λz. y z) x
 exampleSubst2 :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
@@ -183,16 +191,21 @@ exampleSubst2 :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 exampleSubst2 =
   withFresh emptyScope $ \x ->
     let scopeX = extendScope x emptyScope
-    in withFresh (extendScope x emptyScope) $ \y ->
-      let scopeXY = extendScope y scopeX
-      in MetaSubst (Raw.MetaVarIdent "X", MetaAbs
-            (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
-            (App'
-              (lam' scopeXY $ \z ->
-                  App'
-                    (sink (Var (nameOf y)))
-                    (Var z))
-              (sink (Var (nameOf x)))))
+     in withFresh (extendScope x emptyScope) $ \y ->
+          let scopeXY = extendScope y scopeX
+           in MetaSubst
+                ( Raw.MetaVarIdent "X",
+                  MetaAbs
+                    (NameBinderListCons x (NameBinderListCons y NameBinderListEmpty))
+                    ( App'
+                        ( lam' scopeXY $ \z ->
+                            App'
+                              (sink (Var (nameOf y)))
+                              (Var z)
+                        )
+                        (sink (Var (nameOf x)))
+                    )
+                )
 
 -- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst]) "λg. λa. λw. X[g, λz. z a]"
 -- λ x0 . λ x1 . λ x2 . (λ x3 . x3 x1) x0
@@ -245,21 +258,36 @@ nameMapToSubsts :: Foil.NameMap i (e o) -> Foil.Substitution e i o
 nameMapToSubsts nameMap =
   FoilInternal.UnsafeSubstitution $ FoilInternal.getNameMap nameMap
 
--- toMetaTerm :: Term n -> MetaTerm Raw.MetaVarIdent n
--- toMetaTerm = \case
---   MetaVar ident terms -> Node (R2 (MetaAppSig ident terms))
---   _ -> undefined
-
--- fromMetaTerm :: MetaTerm Raw.MetaVarIdet -> Node (InL t)nt n -> Term n
--- fromMetaTerm = undefined
-
 -- ** Conversion helpers for 'MetaSubst'
 
 toMetaSubst :: Raw.MetaSubst -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
-toMetaSubst = _
+toMetaSubst (Raw.MetaSubst metavar vars term) = MetaSubst (metavar, metaAbs)
+  where
+    term' = withMetaSubstVars vars Foil.emptyScope Map.empty $
+      \scope env ->
+        toTerm scope env $ getTermFromScopedTerm term
+
+    binders = undefined
+    -- metaAbs = MetaAbs binders term'
+    metaAbs = undefined
+
+withMetaSubstVars ::
+  (Distinct n) =>
+  [Raw.VarIdent] ->
+  Scope n ->
+  Map Raw.VarIdent (Foil.Name n) ->
+  (forall l. Scope l -> Map Raw.VarIdent (Foil.Name l) -> r) ->
+  r
+withMetaSubstVars [] scope env cont = cont scope env
+withMetaSubstVars (ident : idents) scope env cont =
+  withFresh scope $ \binder ->
+    let scope' = Foil.extendScope binder scope
+        name = Foil.nameOf binder
+        env' = Map.insert ident name (Foil.sink <$> env)
+     in withMetaSubstVars idents scope' env' cont
 
 fromMetaSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent -> Raw.MetaSubst
-fromMetaSubst = _
+fromMetaSubst = undefined
 
 -- ** Conversion helpers for 'MetaTerm'
 
@@ -341,7 +369,7 @@ instance IsString (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
 unsafeParseTerm :: String -> Term Foil.VoidS
 unsafeParseTerm input =
   case Raw.pTerm tokens of
-    Left err   -> error err
+    Left err -> error err
     Right term -> toTermClosed term
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
@@ -349,7 +377,7 @@ unsafeParseTerm input =
 unsafeParseMetaSubst :: String -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 unsafeParseMetaSubst input =
   case Raw.pMetaSubst tokens of
-    Left err    -> error err
+    Left err -> error err
     Right subst -> toMetaSubst subst
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
