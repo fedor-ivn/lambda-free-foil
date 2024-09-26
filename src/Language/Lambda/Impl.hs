@@ -1,14 +1,14 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveTraversable  #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE KindSignatures     #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE PatternSynonyms    #-}
-{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- {-# OPTIONS_GHC -ddump-splices #-}
 
@@ -38,23 +38,23 @@
 -- wildcard patterns and variable patterns are handled in this implementation.
 module Language.Lambda.Impl where
 
-import qualified Control.Monad.Foil            as Foil
-import           Control.Monad.Foil.Internal   as FoilInternal
-import           Control.Monad.Foil.TH
-import           Control.Monad.Free.Foil
-import           Control.Monad.Free.Foil.TH
-import           Data.Biapplicative            (Bifunctor (bimap))
-import           Data.Bifunctor.Sum
-import           Data.Bifunctor.TH
-import           Data.Map                      (Map)
-import qualified Data.Map                      as Map
-import           Data.String                   (IsString (..))
-import           Language.Lambda.Syntax.Abs    (MetaVarIdent)
-import qualified Language.Lambda.Syntax.Abs    as Raw
+import qualified Control.Monad.Foil as Foil
+import Control.Monad.Foil.Internal as FoilInternal
+import Control.Monad.Foil.TH
+import Control.Monad.Free.Foil
+import Control.Monad.Free.Foil.TH
+import Data.Biapplicative (Bifunctor (bimap))
+import Data.Bifunctor.Sum
+import Data.Bifunctor.TH
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.String (IsString (..))
+import Language.Lambda.Syntax.Abs (MetaVarIdent)
+import qualified Language.Lambda.Syntax.Abs as Raw
 import qualified Language.Lambda.Syntax.Layout as Raw
-import qualified Language.Lambda.Syntax.Par    as Raw
-import qualified Language.Lambda.Syntax.Print  as Raw
-import           System.Exit                   (exitFailure)
+import qualified Language.Lambda.Syntax.Par as Raw
+import qualified Language.Lambda.Syntax.Print as Raw
+import System.Exit (exitFailure)
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -262,7 +262,7 @@ nameMapToSubsts nameMap =
 
 toMetaSubst :: Raw.MetaSubst -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 toMetaSubst (Raw.MetaSubst metavar vars term) =
-  withMetaSubstVars vars Foil.emptyScope Map.empty $ \scope binderList env ->
+  withMetaSubstVars vars Foil.emptyScope Map.empty NameBinderListEmpty $ \scope env binderList ->
     let term' = toTerm scope env (getTermFromScopedTerm term)
      in MetaSubst (metavar, MetaAbs binderList (toMetaTerm term'))
 
@@ -271,15 +271,27 @@ withMetaSubstVars ::
   [Raw.VarIdent] ->
   Scope n ->
   Map Raw.VarIdent (Foil.Name n) ->
-  (forall l. Distinct l => Scope l -> Map Raw.VarIdent (Foil.Name l) -> r) ->
+  NameBinderList i n ->
+  ( forall l.
+    (Distinct l) =>
+    Scope l ->
+    Map Raw.VarIdent (Foil.Name l) ->
+    NameBinderList i l ->
+    r
+  ) ->
   r
-withMetaSubstVars [] scope env cont = cont scope env
-withMetaSubstVars (ident : idents) scope env cont =
+withMetaSubstVars [] scope env binderList cont = cont scope env binderList
+withMetaSubstVars (ident : idents) scope env binderList cont =
   withFresh scope $ \binder ->
     let scope' = Foil.extendScope binder scope
         name = Foil.nameOf binder
         env' = Map.insert ident name (Foil.sink <$> env)
-     in withMetaSubstVars idents scope' env' cont
+        binderList' = push binder binderList
+     in withMetaSubstVars idents scope' env' binderList' cont
+  where
+    push :: Foil.NameBinder i l -> NameBinderList n i -> NameBinderList n l
+    push x NameBinderListEmpty = NameBinderListCons x NameBinderListEmpty
+    push x (NameBinderListCons y ys) = NameBinderListCons y (push x ys)
 
 fromMetaSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent -> Raw.MetaSubst
 fromMetaSubst = undefined
@@ -364,7 +376,7 @@ instance IsString (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
 unsafeParseTerm :: String -> Term Foil.VoidS
 unsafeParseTerm input =
   case Raw.pTerm tokens of
-    Left err   -> error err
+    Left err -> error err
     Right term -> toTermClosed term
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
@@ -372,7 +384,7 @@ unsafeParseTerm input =
 unsafeParseMetaSubst :: String -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 unsafeParseMetaSubst input =
   case Raw.pMetaSubst tokens of
-    Left err    -> error err
+    Left err -> error err
     Right subst -> toMetaSubst subst
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
