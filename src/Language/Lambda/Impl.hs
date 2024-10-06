@@ -187,7 +187,7 @@ exampleSubst =
 
 -- X[x, y] -> (λz: t. y z) x
 exampleSubst2 :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
--- exampleSubst = "X[x, y] ↦ (λz. y z) x"
+-- exampleSubst = "X[x, y] ↦ (λz: t. y z) x"
 exampleSubst2 =
   withFresh emptyScope $ \x ->
     let scopeX = extendScope x emptyScope
@@ -207,12 +207,12 @@ exampleSubst2 =
                     )
                 )
 
--- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst]) "λg. λa. λw. X[g, λz. z a]"
--- λ x0 . λ x1 . λ x2 . (λ x3 . x3 x1) x0
--- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst2]) "λg. λw. λa. X[g, λz. z a]"
--- λ x0 . λ x1 . λ x2 . (λ x3 . (λ x3 . x3 x2) x3) x0
--- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst2]) "λg. λa. X[g, λz. z a]"
--- λ x0 . λ x1 . (λ x2 . (λ x2 . x2 x1) x2) x0
+-- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst]) "λg: t. λa: u. λw: v. X[g, λz: u -> t. z a]"
+-- λ x0 : t . λ x1 : u . λ x2 : v . (λ x3 : u -> t . x3 x1) x0
+-- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst2]) "λg: t. λw: v. λa: u. X[g, λz: u -> t. z a]"
+-- λ x0 : t . λ x1 : v . λ x2 : u . (λ x3 : t . (λ x3 : u -> t . x3 x2) x3) x0
+-- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst2]) "λg: t. λa: u. X[g, λz: u -> t. z a]"
+-- λ x0 : t . λ x1 : u . (λ x2 : t . (λ x2 : u -> t . x2 x1) x2) x0
 applyMetaSubsts
   :: (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n)
   => (metavar -> metavar')
@@ -335,8 +335,8 @@ fromTerm =
     Raw.AScopedTerm
     (\i -> Raw.VarIdent ("x" ++ show i))
 
--- >>> lam Foil.emptyScope (\x -> App (MetaVar (Raw.MetaVarIdent "X") []) (Var x))
--- λ x0 . X [] x0
+-- >>> lam (Raw.Base (Raw.VarIdent "t")) Foil.emptyScope (\x -> App (MetaVar (Raw.MetaVarIdent "X") []) (Var x))
+-- λ x0 : t . X [] x0
 lam :: (Distinct n) => Raw.Type -> Foil.Scope n -> (forall l. (Foil.DExt n l) => Foil.Name l -> Term l) -> Term n
 lam typ scope makeBody = Foil.withFresh scope $ \x' ->
   let x = Foil.nameOf x'
@@ -347,29 +347,29 @@ lam' typ scope makeBody = Foil.withFresh scope $ \x' ->
   let x = Foil.nameOf x'
    in Lam' typ (FoilAPattern x') (makeBody x)
 
--- >>> lam Foil.emptyScope (\x -> App (Var x) (Var x))
--- λ x0 . x0 x0
+-- >>> lam (Raw.Base (Raw.VarIdent "t")) Foil.emptyScope (\x -> App (Var x) (Var x))
+-- λ x0 : t . x0 x0
 instance Show (Term n) where
   show = Raw.printTree . fromTerm
 
--- >>> "λy.(λx.λy.x)y" :: Term Foil.VoidS
--- λ x0 . (λ x1 . λ x2 . x1) x0
+-- >>> "λy:t.(λx:u.λy:v.x)y" :: Term Foil.VoidS
+-- λ x0 : t . (λ x1 : u . λ x2 : v . x1) x0
 instance IsString (Term Foil.VoidS) where
   fromString = unsafeParseTerm
 
 instance Show (MetaTerm Raw.MetaVarIdent n) where
   show = Raw.printTree . fromTerm . fromMetaTerm
 
--- >>> "λy.(λx.λy.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
--- λ x0 . (λ x1 . λ x2 . X [x1, x2 X [x2, x1]]) x0
+-- >>> "λy:t.(λx:u.λy:v.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
+-- λ x0 : t . (λ x1 : u . λ x2 : v . X [x1, x2 X [x2, x1]]) x0
 instance IsString (MetaTerm Raw.MetaVarIdent Foil.VoidS) where
   fromString = toMetaTerm . unsafeParseTerm
 
 instance Show (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
   show = Raw.printTree . fromMetaSubst
 
--- >>> "λy.(λx.λy.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
--- λ x0 . (λ x1 . λ x2 . X [x1, x2 X [x2, x1]]) x0
+-- >>> "λy:t.(λx:u.λy:v.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
+-- λ x0 : t . (λ x1 : u . λ x2 : v . X [x1, x2 X [x2, x1]]) x0
 instance IsString (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
   fromString = unsafeParseMetaSubst
 
@@ -393,12 +393,12 @@ unsafeParseMetaSubst input =
 matchPattern :: FoilPattern n l -> Term n -> Foil.Substitution Term l n
 matchPattern (FoilAPattern x) = Foil.addSubst Foil.identitySubst x
 
--- >>> whnf Foil.emptyScope (lam Foil.emptyScope (\x -> App (Var x) (Var x)))
--- λ x0 . x0 x0
--- >>> whnf Foil.emptyScope "(λs.λz.s (s z)) (λs.λz.s (s z))"
--- λ x1 . (λ x0 . λ x1 . x0 (x0 x1)) ((λ x0 . λ x1 . x0 (x0 x1)) x1)
--- >>> whnf Foil.emptyScope "(λs.λz.s (?s z)) (λs.λz.s (s z))"
--- λ x1 . (λ x0 . λ x1 . x0 (x0 x1)) (?s x1)
+-- >>> whnf Foil.emptyScope (lam (Raw.Base (Raw.VarIdent "magic")) Foil.emptyScope (\x -> App (Var x) (Var x)))
+-- λ x0 : magic . x0 x0
+-- >>> whnf Foil.emptyScope "(λs:fix.λz:fix.s (s z)) (λs:fix.λz:fix.s (s z))"
+-- λ x1 : fix . (λ x0 : fix . λ x1 : fix . x0 (x0 x1)) ((λ x0 : fix . λ x1 : fix . x0 (x0 x1)) x1)
+-- >>> whnf Foil.emptyScope "(λs:fix.λz:fix.s (S[] z)) (λs:fix.λz:fix.s (s z))"
+-- λ x1 : fix . (λ x0 : fix . λ x1 : fix . x0 (x0 x1)) (S [] x1)
 whnf :: (Foil.Distinct n) => Foil.Scope n -> Term n -> Term n
 whnf scope = \case
   App f x ->
@@ -409,20 +409,20 @@ whnf scope = \case
       f' -> App f' x
   t -> t
 
--- >>> nf Foil.emptyScope "λy.λz. (λx.λy.y) y z"
--- λ x0 . λ x1 . x1
--- >>> nf Foil.emptyScope "λz.λw.(λx.λy.y) z (λz.z) w"
--- λ x0 . λ x1 . x1
--- >>> nf Foil.emptyScope "(λb.λx.λy.b y x) (λx.λy.x)"
--- λ x1 . λ x2 . x2
--- >>> nf Foil.emptyScope "(λs.λz.s(s(s z)))(λb.λx.λy.b y x)(λx.λy.y)"
--- λ x2 . λ x3 . x2
--- >>> nf Foil.emptyScope "(λs.λz.s (s z)) (λs.λz.s (s z)) (λb.λy.λx.b x y) (λy.λx.x)"
--- λ x1 . λ x3 . x3
--- >>> nf Foil.emptyScope "(λ a . λ x . x) (λ a . a)"
--- λ x1 . x1
--- >>> nf Foil.emptyScope "let f = λ a . λ x . x in f (λ a . a) (λ a . a)"
--- λ x1 . x1
+-- >>> nf Foil.emptyScope "λy:t.λz:f. (λx:t.λy:f.y) y z"
+-- λ x0 : t . λ x1 : f . x1
+-- >>> nf Foil.emptyScope "λz:t.λw:u.(λx:t.λy:u->u.y) z (λz:u.z) w"
+-- λ x0 : t . λ x1 : u . x1
+-- >>> nf Foil.emptyScope "(λb:t->f->t.λx:f.λy:t.b y x) (λx:t.λy:f.x)"
+-- λ x1 : f . λ x2 : t . x2
+-- >>> nf Foil.emptyScope "(λs:(t->t)->t->t.λz:t->t.s(s z))(λb:t->t->t.λx:t.λy:t.b y x)(λx:t.λy:t.y)"
+-- λ x2 : t . λ x3 : t . x3
+-- >>> nf Foil.emptyScope "(λs:(t->t)->t->t.λz:t->t.s (s z)) (λs:(t->t)->t->t.λz:t->t.s (s z)) (λb:t->t->t.λy:t.λx:t.b x y) (λy:t.λx:t.x)"
+-- λ x1 : t . λ x3 : t . x3
+-- >>> nf Foil.emptyScope "(λ a : (t -> t) . λ x: u . x) (λ a : t . a)"
+-- λ x1 : u . x1
+-- >>> nf Foil.emptyScope "let f = λ a : (t -> t) . λ x : (u -> u) . x in f (λ a : t . a) (λ a : u . a)"
+-- λ x1 : u . x1
 nf :: (Foil.Distinct n) => Foil.Scope n -> Term n -> Term n
 nf scope = \case
   App f x ->
