@@ -140,9 +140,7 @@ action_0,
  action_75,
  action_76,
  action_77,
- action_78,
- action_79,
- action_80 :: () => Prelude.Int -> ({-HappyReduction (Err) = -}
+ action_78 :: () => Prelude.Int -> ({-HappyReduction (Err) = -}
 	   Prelude.Int 
 	-> (Token)
 	-> HappyState (Token) (HappyStk HappyAbsSyn -> [(Token)] -> (Err) HappyAbsSyn)
@@ -185,7 +183,7 @@ happyReduce_13,
 	-> [(Token)] -> (Err) HappyAbsSyn)
 
 happyExpList :: Happy_Data_Array.Array Prelude.Int Prelude.Int
-happyExpList = Happy_Data_Array.listArray (0,178) ([0,0,256,0,0,256,0,0,256,0,16384,27648,0,16384,24576,0,16384,24576,0,16384,27648,0,16384,27648,0,0,8192,0,0,16384,0,0,8192,0,16384,8192,0,16384,8192,0,0,8192,0,0,0,0,0,0,0,0,0,0,16384,8192,0,0,0,0,0,2,0,0,1,0,0,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,64,0,0,0,0,16384,24576,0,0,0,0,0,0,0,16384,27648,0,0,8192,0,0,8192,0,0,1,0,0,0,0,0,0,0,16384,24576,0,0,0,0,0,16,0,0,0,0,16384,27648,0,0,0,0,0,0,0,0,0,0,0,0,0,0,256,0,0,0,0,16384,27648,0,0,8,0,0,8,0,32768,0,0,16384,27648,0,0,8192,0,0,8192,0,16384,8192,0,32768,0,0,0,0,0,0,0,0,0,0,0,0,128,0,0,128,0,0,0,0,16384,8192,0,16384,8192,0,0,0,0,0,0,0,0,4,0,0,32,0,0,0,0,0,4096,0,16384,27648,0,16384,27648,0,16384,27648,0,0,0,0,0,512,0,0,0,0,16384,27648,0,0,0,0
+happyExpList = Happy_Data_Array.listArray (0,178) ([0,0,256,0,0,256,0,0,256,0,16384,27648,0,16384,24576,0,16384,24576,0,16384,27648,0,16384,27648,0,0,8192,0,0,16384,0,0,8192,0,16384,8192,0,16384,8192,0,0,8192,0,0,0,0,0,0,0,0,0,0,16384,8192,0,0,0,0,0,2,0,0,1,0,0,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,64,0,0,0,0,16384,24576,0,0,0,0,0,0,0,16384,27648,0,0,8192,0,0,8192,0,0,1,0,0,0,0,0,0,0,16384,24576,0,0,0,0,0,16,0,0,0,0,16384,27648,0,0,0,0,0,0,0,0,0,0,0,0,0,0,256,0,0,0,0,16384,27648,0,0,8,0,0,32,0,32768,0,0,16384,27648,0,0,8192,0,0,8192,0,16384,8192,0,32768,0,0,0,0,0,0,0,0,0,0,0,0,128,0,0,128,0,0,0,0,16384,27648,0,16384,8192,0,0,0,0,0,0,0,0,4,0,0,512,0,0,0,0,0,4096,0,16384,27648,0,16384,27648,0,16384,27648,0,0,0,0,0,0,0,0,0,0
 	])
 
 {-# NOINLINE happyExpListPerState #-}
@@ -455,7 +453,7 @@ action_50 _ = happyReduce_27
 action_51 (36) = happyShift action_66
 action_51 _ = happyFail (happyExpListPerState 51)
 
-action_52 (36) = happyShift action_65
+action_52 (38) = happyShift action_65
 action_52 _ = happyFail (happyExpListPerState 52)
 
 action_53 (32) = happyShift action_64
@@ -508,11 +506,16 @@ action_63 _ = happyFail (happyExpListPerState 63)
 
 action_64 _ = happyReduce_26
 
-action_65 (31) = happyShift action_17
+action_65 (31) = happyShift action_33
+action_65 (43) = happyShift action_34
+action_65 (44) = happyShift action_35
 action_65 (46) = happyShift action_14
-action_65 (16) = happyGoto action_15
-action_65 (29) = happyGoto action_70
-action_65 (30) = happyGoto action_19
+action_65 (47) = happyShift action_24
+action_65 (16) = happyGoto action_27
+action_65 (17) = happyGoto action_28
+action_65 (21) = happyGoto action_70
+action_65 (22) = happyGoto action_30
+action_65 (23) = happyGoto action_31
 action_65 _ = happyFail (happyExpListPerState 65)
 
 action_66 (31) = happyShift action_17
@@ -529,7 +532,7 @@ action_68 _ = happyReduce_18
 action_69 (35) = happyShift action_75
 action_69 _ = happyFail (happyExpListPerState 69)
 
-action_70 (38) = happyShift action_74
+action_70 (42) = happyShift action_74
 action_70 _ = happyFail (happyExpListPerState 70)
 
 action_71 _ = happyReduce_25
@@ -557,9 +560,10 @@ action_74 (46) = happyShift action_14
 action_74 (47) = happyShift action_24
 action_74 (16) = happyGoto action_27
 action_74 (17) = happyGoto action_28
-action_74 (21) = happyGoto action_77
+action_74 (21) = happyGoto action_29
 action_74 (22) = happyGoto action_30
 action_74 (23) = happyGoto action_31
+action_74 (25) = happyGoto action_77
 action_74 _ = happyFail (happyExpListPerState 74)
 
 action_75 (31) = happyShift action_33
@@ -577,25 +581,9 @@ action_75 _ = happyFail (happyExpListPerState 75)
 
 action_76 _ = happyReduce_19
 
-action_77 (42) = happyShift action_79
-action_77 _ = happyFail (happyExpListPerState 77)
+action_77 _ = happyReduce_20
 
 action_78 _ = happyReduce_32
-
-action_79 (31) = happyShift action_33
-action_79 (43) = happyShift action_34
-action_79 (44) = happyShift action_35
-action_79 (46) = happyShift action_14
-action_79 (47) = happyShift action_24
-action_79 (16) = happyGoto action_27
-action_79 (17) = happyGoto action_28
-action_79 (21) = happyGoto action_29
-action_79 (22) = happyGoto action_30
-action_79 (23) = happyGoto action_31
-action_79 (25) = happyGoto action_80
-action_79 _ = happyFail (happyExpListPerState 79)
-
-action_80 _ = happyReduce_20
 
 happyReduce_13 = happySpecReduce_1  16 happyReduction_13
 happyReduction_13 (HappyTerminal (PT _ (T_VarIdent happy_var_1)))
@@ -652,18 +640,16 @@ happyReduction_19 ((HappyAbsSyn25  happy_var_6) `HappyStk`
 		 (Language.Lambda.Syntax.Abs.Lam happy_var_2 happy_var_4 happy_var_6
 	) `HappyStk` happyRest
 
-happyReduce_20 = happyReduce 8 21 happyReduction_20
-happyReduction_20 ((HappyAbsSyn25  happy_var_8) `HappyStk`
+happyReduce_20 = happyReduce 6 21 happyReduction_20
+happyReduction_20 ((HappyAbsSyn25  happy_var_6) `HappyStk`
 	_ `HappyStk`
-	(HappyAbsSyn21  happy_var_6) `HappyStk`
-	_ `HappyStk`
-	(HappyAbsSyn29  happy_var_4) `HappyStk`
+	(HappyAbsSyn21  happy_var_4) `HappyStk`
 	_ `HappyStk`
 	(HappyAbsSyn26  happy_var_2) `HappyStk`
 	_ `HappyStk`
 	happyRest)
 	 = HappyAbsSyn21
-		 (Language.Lambda.Syntax.Abs.Let happy_var_2 happy_var_4 happy_var_6 happy_var_8
+		 (Language.Lambda.Syntax.Abs.Let happy_var_2 happy_var_4 happy_var_6
 	) `HappyStk` happyRest
 
 happyReduce_21 = happySpecReduce_1  21 happyReduction_21

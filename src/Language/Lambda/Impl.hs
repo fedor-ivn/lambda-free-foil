@@ -73,6 +73,7 @@ data TermSig scope term
   | LetSig term scope
   | AppSig term term
   | MetaVarSig Raw.MetaVarIdent [term] -- FIXME: this constructor is not generated correctly by mkSignature!
+  | MetaSubstSig Raw.MetaVarIdent term
   deriving (Functor, Foldable, Traversable)
 
 -- data TermSig scope term
@@ -100,8 +101,11 @@ pattern MetaVar :: Raw.MetaVarIdent -> [AST binder TermSig n] -> AST binder Term
 pattern MetaVar metavar args = Node (MetaVarSig metavar args)
 
 pattern App' f x = Node (L2 (AppSig f x))
+
 pattern Lam' typ binder body = Node (L2 (LamSig typ (ScopedAST binder body)))
+
 pattern Let' term binder body = Node (L2 (LetSig term (ScopedAST binder body)))
+
 pattern MetaVar' metavar args = Node (L2 (MetaVarSig metavar args))
 
 -- FV( (λ x. x) y )  =  { y }
@@ -136,6 +140,7 @@ mkFromFoilPattern ''Raw.VarIdent ''Raw.Pattern
 
 data MetaAppSig metavar scope term = MetaAppSig metavar [term]
   deriving (Functor, Foldable, Traversable)
+
 deriveBifunctor ''MetaAppSig
 deriveBifoldable ''MetaAppSig
 deriveBitraversable ''MetaAppSig
@@ -253,21 +258,43 @@ nameMapToSubsts :: Foil.NameMap i (e o) -> Foil.Substitution e i o
 nameMapToSubsts nameMap =
   FoilInternal.UnsafeSubstitution $ FoilInternal.getNameMap nameMap
 
--- toMetaTerm :: Term n -> MetaTerm Raw.MetaVarIdent n
--- toMetaTerm = \case
---   MetaVar ident terms -> Node (R2 (MetaAppSig ident terms))
---   _ -> undefined
-
--- fromMetaTerm :: MetaTerm Raw.MetaVarIdet -> Node (InL t)nt n -> Term n
--- fromMetaTerm = undefined
-
 -- ** Conversion helpers for 'MetaSubst'
 
 toMetaSubst :: Raw.MetaSubst -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
-toMetaSubst = toMetaSubst
+toMetaSubst (Raw.MetaSubst metavar vars term) =
+  withMetaSubstVars vars Foil.emptyScope Map.empty NameBinderListEmpty $ \scope env binderList ->
+    let term' = toTerm scope env (getTermFromScopedTerm term)
+     in MetaSubst (metavar, MetaAbs binderList (toMetaTerm term'))
+
+withMetaSubstVars
+  :: (Distinct n)
+  => [Raw.VarIdent]
+  -> Scope n
+  -> Map Raw.VarIdent (Foil.Name n)
+  -> NameBinderList i n
+  -> ( forall l
+        . (Distinct l)
+       => Scope l
+       -> Map Raw.VarIdent (Foil.Name l)
+       -> NameBinderList i l
+       -> r
+     )
+  -> r
+withMetaSubstVars [] scope env binderList cont = cont scope env binderList
+withMetaSubstVars (ident : idents) scope env binderList cont =
+  withFresh scope $ \binder ->
+    let scope' = Foil.extendScope binder scope
+        name = Foil.nameOf binder
+        env' = Map.insert ident name (Foil.sink <$> env)
+        binderList' = push binder binderList
+     in withMetaSubstVars idents scope' env' binderList' cont
+ where
+  push :: Foil.NameBinder i l -> NameBinderList n i -> NameBinderList n l
+  push x NameBinderListEmpty = NameBinderListCons x NameBinderListEmpty
+  push x (NameBinderListCons y ys) = NameBinderListCons y (push x ys)
 
 fromMetaSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent -> Raw.MetaSubst
-fromMetaSubst = fromMetaSubst
+fromMetaSubst = undefined
 
 -- ** Conversion helpers for 'MetaTerm'
 
