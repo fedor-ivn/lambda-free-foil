@@ -1,4 +1,5 @@
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Language.Lambda.Typed (
   Type (..),
@@ -10,8 +11,12 @@ module Language.Lambda.Typed (
   pattern Metavar,
   typeOf,
   Heading (..),
-  isRigid,
-  NormalTerm (..),
+  NormalTerm' (..),
+  NormalTerm,
+  RigidTerm,
+  FlexibleTerm,
+  pattern Rigid,
+  pattern Flexible,
   asNormalTerm,
   DisagreementSet (..),
   Node (..),
@@ -75,76 +80,71 @@ typeOf typeOfAtom (Lambda boundVariable typ body) = do
       else typeOfAtom variable
   Just (Function typ returnType)
 
-data Heading = Heading
+data Heading head = Heading
   { binder :: [(Variable, Type)]
-  , head :: Atom
+  , head :: head
   }
   deriving (Eq, Show)
-
--- >>> x = Variable "x"
--- >>> y = Variable "y"
--- >>> m = Metavariable "M"
--- >>> t = Base "t"
---
--- >>> isRigid (Heading [(x, t)] (AVar x))
--- True
--- >>> isRigid (Heading [(x, t)] (AVar y))
--- True
--- >>> isRigid (Heading [(x, t)] (AMetavar M))
--- False
-isRigid :: Heading -> Bool
-isRigid (Heading _ (AVar _)) = True
-isRigid (Heading _ (AMetavar _)) = False
 
 -- Ignores types of parameters (at least for now).
 --
 -- >>> a = Variable "a"
 -- >>> x = Variable "x"
 -- >>> y = Variable "y"
--- >>> m = Metavariable "M"
--- >>> n = Metavariable "N"
 -- >>> t = Base "t"
 --
--- >>> areAlphaEquivalent (Heading [(x, t)] (AVar x)) (Heading [(y, t)] (AVar y))
+-- >>> areAlphaEquivalent (Heading [(x, t)] x) (Heading [(y, t)] y)
 -- True
--- >>> areAlphaEquivalent (Heading [(x, t)] (AVar a)) (Heading [(y, t)] (AVar a))
+-- >>> areAlphaEquivalent (Heading [(x, t)] a) (Heading [(y, t)] a)
 -- True
--- >>> areAlphaEquivalent (Heading [(x, t)] (AVar x)) (Heading [(y, t)] (AVar x))
+-- >>> areAlphaEquivalent (Heading [(x, t)] x) (Heading [(y, t)] x)
 -- False
--- >>> areAlphaEquivalent (Heading [(y, t)] (AVar x)) (Heading [(x, t)] (AVar x))
+-- >>> areAlphaEquivalent (Heading [(y, t)] x) (Heading [(x, t)] x)
 -- False
--- >>> areAlphaEquivalent (Heading [(x, t), (y, t)] (AVar x)) (Heading [(x, t)] (AVar x))
+-- >>> areAlphaEquivalent (Heading [(x, t), (y, t)] x) (Heading [(x, t)] x)
 -- False
--- >>> areAlphaEquivalent (Heading [(x, t)] (AMetavar m)) (Heading [(y, t)] (AMetavar m))
--- True
--- >>> areAlphaEquivalent (Heading [(x, t)] (AMetavar m)) (Heading [(y, t), (x, t)] (AMetavar m))
--- False
--- >>> areAlphaEquivalent (Heading [(x, t)] (AMetavar n)) (Heading [(y, t)] (AMetavar m))
--- False
-areAlphaEquivalent :: Heading -> Heading -> Bool
-areAlphaEquivalent
-  (Heading leftBinder (AMetavar leftHead))
-  (Heading rightBinder (AMetavar rightHead)) =
-    leftHead == rightHead && length leftBinder == length rightBinder
-areAlphaEquivalent (Heading [] (AVar leftHead)) (Heading [] (AVar rightHead)) =
+areAlphaEquivalent :: Heading Variable -> Heading Variable -> Bool
+areAlphaEquivalent (Heading [] leftHead) (Heading [] rightHead) =
   leftHead == rightHead
 areAlphaEquivalent
-  (Heading ((leftVariable, _) : leftBinder) (AVar leftHead))
-  (Heading ((rightVariable, _) : rightBinder) (AVar rightHead))
+  (Heading ((leftVariable, _) : leftBinder) leftHead)
+  (Heading ((rightVariable, _) : rightBinder) rightHead)
     | leftVariable == leftHead =
         rightVariable == rightHead && length leftBinder == length rightBinder
     | rightVariable == rightHead = False
     | otherwise =
         areAlphaEquivalent
-          (Heading leftBinder (AVar leftHead))
-          (Heading rightBinder (AVar rightHead))
+          (Heading leftBinder leftHead)
+          (Heading rightBinder rightHead)
 areAlphaEquivalent _ _ = False
 
-data NormalTerm = NormalTerm
-  { heading :: Heading
+data NormalTerm' head = NormalTerm
+  { heading :: Heading head
   , arguments :: [NormalTerm]
   }
   deriving (Eq, Show)
+
+type NormalTerm = NormalTerm' Atom
+type RigidTerm = NormalTerm' Variable
+type FlexibleTerm = NormalTerm' Metavariable
+
+termKind :: NormalTerm -> Either FlexibleTerm RigidTerm
+termKind (NormalTerm (Heading binder' (AVar head')) arguments') =
+  Right (NormalTerm (Heading binder' head') arguments')
+termKind (NormalTerm (Heading binder' (AMetavar head')) arguments') =
+  Left (NormalTerm (Heading binder' head') arguments')
+
+pattern Rigid :: RigidTerm -> NormalTerm
+pattern Rigid rigid <- (termKind -> Right rigid)
+  where
+    Rigid (NormalTerm (Heading binder' head') arguments') =
+      NormalTerm (Heading binder' (AVar head')) arguments'
+
+pattern Flexible :: FlexibleTerm -> NormalTerm
+pattern Flexible flexible <- (termKind -> Left flexible)
+  where
+    Flexible (NormalTerm (Heading binder' head') arguments') =
+      NormalTerm (Heading binder' (AMetavar head')) arguments'
 
 -- >>> x = Variable "x"
 -- >>> y = Variable "y"
@@ -181,7 +181,7 @@ asNormalTerm other = extractBody other
     Just (NormalTerm heading' (arguments' <> [argument']))
   extractBody (Atom head') = Just (NormalTerm (Heading [] head') [])
 
-scopedArguments :: NormalTerm -> [NormalTerm]
+scopedArguments :: NormalTerm' head -> [NormalTerm]
 scopedArguments (NormalTerm (Heading scope _) arguments') =
   scopedArgument <$> arguments'
  where
@@ -237,16 +237,14 @@ simplify (DisagreementSet set) = case simplifyRigidPairs set of
   Just set' -> Nonterminal (DisagreementSet (putRigidOnRight <$> set'))
  where
   simplifyRigidPairs = foldr simplifyRigidPair (Just [])
-  simplifyRigidPair pair@(left, right) rest
-    | not (isRigid (heading left)) = (pair :) <$> rest
-    | not (isRigid (heading right)) = (pair :) <$> rest
-    | not (areAlphaEquivalent (heading left) (heading right)) = Nothing
-    | otherwise = do
+  simplifyRigidPair (Rigid left, Rigid right) rest
+    | areAlphaEquivalent (heading left) (heading right) = do
         newPairs <- simplifyRigidPairs (zip (scopedArguments left) (scopedArguments right))
         rest' <- rest
         return (newPairs <> rest')
+    | otherwise = Nothing
+  simplifyRigidPair pair rest = (pair :) <$> rest
 
   -- TODO: is this really needed here?
-  putRigidOnRight (left, right)
-    | isRigid (heading left) = (right, left)
-    | otherwise = (left, right)
+  putRigidOnRight (left@(Rigid _), right) = (right, left)
+  putRigidOnRight (left, right) = (left, right)
