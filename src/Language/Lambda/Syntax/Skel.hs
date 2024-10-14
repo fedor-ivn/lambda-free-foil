@@ -33,7 +33,7 @@ transCommand x = case x of
 
 transTerm :: Language.Lambda.Syntax.Abs.Term -> Result
 transTerm x = case x of
-  Language.Lambda.Syntax.Abs.Lam pattern_ scopedterm -> failure x
+  Language.Lambda.Syntax.Abs.Lam pattern_ type_ scopedterm -> failure x
   Language.Lambda.Syntax.Abs.Let pattern_ term scopedterm -> failure x
   Language.Lambda.Syntax.Abs.App term1 term2 -> failure x
   Language.Lambda.Syntax.Abs.Var varident -> failure x
@@ -50,3 +50,8 @@ transPattern x = case x of
 transMetaSubst :: Language.Lambda.Syntax.Abs.MetaSubst -> Result
 transMetaSubst x = case x of
   Language.Lambda.Syntax.Abs.MetaSubst metavarident varidents scopedterm -> failure x
+
+transType :: Language.Lambda.Syntax.Abs.Type -> Result
+transType x = case x of
+  Language.Lambda.Syntax.Abs.Fun type_1 type_2 -> failure x
+  Language.Lambda.Syntax.Abs.Base varident -> failure x

@@ -22,7 +22,7 @@ data Command = CommandCompute Term
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
 
 data Term
-    = Lam Pattern ScopedTerm
+    = Lam Pattern Type ScopedTerm
     | Let Pattern Term ScopedTerm
     | App Term Term
     | Var VarIdent
@@ -36,6 +36,9 @@ data Pattern = APattern VarIdent
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
 
 data MetaSubst = MetaSubst MetaVarIdent [VarIdent] ScopedTerm
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+
+data Type = Fun Type Type | Base VarIdent
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
 
 newtype VarIdent = VarIdent String

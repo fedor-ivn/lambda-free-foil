@@ -13,7 +13,7 @@ CommandCompute. Command ::= "compute" Term ;
 terminator Command ";" ;
 
 -- Terms in the lambda calculus
-Lam.    Term ::= "λ" Pattern "." ScopedTerm ;
+Lam.    Term ::= "λ" Pattern ":" Type "." ScopedTerm ;
 Let.    Term ::= "let" Pattern "=" Term "in" ScopedTerm ;
 App.    Term1 ::= Term1 Term2 ;  -- x y z  =  (x y) z  ≠  x (y z)
 Var.    Term2 ::= VarIdent ;
@@ -31,3 +31,8 @@ MetaSubst. MetaSubst ::= MetaVarIdent "[" [VarIdent] "]" "↦" ScopedTerm ;
 -- MetaSubst. MetaSubst ::= MetaVarIdent "[" [Pattern] "]" "↦" ScopedTerm ;
 
 separator VarIdent "," ;
+
+-- Types
+Fun.    Type ::= Type1 "->" Type ;
+Base.   Type1 ::= VarIdent ;
+coercions Type 1;

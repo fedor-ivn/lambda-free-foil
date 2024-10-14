@@ -155,7 +155,7 @@ instance Print [Language.Lambda.Syntax.Abs.Command] where
 
 instance Print Language.Lambda.Syntax.Abs.Term where
   prt i = \case
-    Language.Lambda.Syntax.Abs.Lam pattern_ scopedterm -> prPrec i 0 (concatD [doc (showString "\955"), prt 0 pattern_, doc (showString "."), prt 0 scopedterm])
+    Language.Lambda.Syntax.Abs.Lam pattern_ type_ scopedterm -> prPrec i 0 (concatD [doc (showString "\955"), prt 0 pattern_, doc (showString ":"), prt 0 type_, doc (showString "."), prt 0 scopedterm])
     Language.Lambda.Syntax.Abs.Let pattern_ term scopedterm -> prPrec i 0 (concatD [doc (showString "let"), prt 0 pattern_, doc (showString "="), prt 0 term, doc (showString "in"), prt 0 scopedterm])
     Language.Lambda.Syntax.Abs.App term1 term2 -> prPrec i 1 (concatD [prt 1 term1, prt 2 term2])
     Language.Lambda.Syntax.Abs.Var varident -> prPrec i 2 (concatD [prt 0 varident])
@@ -182,3 +182,8 @@ instance Print [Language.Lambda.Syntax.Abs.VarIdent] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
+
+instance Print Language.Lambda.Syntax.Abs.Type where
+  prt i = \case
+    Language.Lambda.Syntax.Abs.Fun type_1 type_2 -> prPrec i 0 (concatD [prt 1 type_1, doc (showString "->"), prt 0 type_2])
+    Language.Lambda.Syntax.Abs.Base varident -> prPrec i 1 (concatD [prt 0 varident])
