@@ -46,3 +46,7 @@ extra-deps:
 #
 # Allow a newer minor version of GHC than the snapshot specifies
 # compiler-check: newer-minor
+
+# If you are not using Nix, run `stack build --no-nix`
+nix:
+  enable: true  # false by default, except on NixOS

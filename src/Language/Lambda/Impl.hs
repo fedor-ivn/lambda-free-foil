@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -100,12 +101,16 @@ pattern Let term binder body = Node (LetSig term (ScopedAST binder body))
 pattern MetaVar :: Raw.MetaVarIdent -> [AST binder TermSig n] -> AST binder TermSig n
 pattern MetaVar metavar args = Node (MetaVarSig metavar args)
 
+pattern App' :: AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n
 pattern App' f x = Node (L2 (AppSig f x))
 
+pattern Lam' :: binder n l -> AST binder (Sum TermSig q) l -> AST binder (Sum TermSig q) n
 pattern Lam' binder body = Node (L2 (LamSig (ScopedAST binder body)))
 
+pattern Let' :: AST binder (Sum TermSig q) n -> binder n l -> AST binder (Sum TermSig q) l -> AST binder (Sum TermSig q) n
 pattern Let' term binder body = Node (L2 (LetSig term (ScopedAST binder body)))
 
+pattern MetaVar' :: MetaVarIdent -> [AST binder (Sum TermSig q) n] -> AST binder (Sum TermSig q) n
 pattern MetaVar' metavar args = Node (L2 (MetaVarSig metavar args))
 
 -- FV( (λ x. x) y )  =  { y }
@@ -294,7 +299,16 @@ withMetaSubstVars (ident : idents) scope env binderList cont =
     push x (NameBinderListCons y ys) = NameBinderListCons y (push x ys)
 
 fromMetaSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent -> Raw.MetaSubst
-fromMetaSubst = undefined
+fromMetaSubst (MetaSubst (metavar, MetaAbs binderList term)) =
+  let term' = Raw.AScopedTerm $ fromTerm $ fromMetaTerm term
+      idents = toVarIdentList binderList
+   in Raw.MetaSubst metavar idents term'
+  where
+    toVarIdentList :: NameBinderList i n -> [Raw.VarIdent]
+    toVarIdentList NameBinderListEmpty = []
+    toVarIdentList (NameBinderListCons x xs) =
+      let ident = Raw.VarIdent $ "x" ++ show (Foil.nameOf x)
+       in ident : toVarIdentList xs
 
 -- ** Conversion helpers for 'MetaTerm'
 
@@ -355,22 +369,29 @@ instance Show (Term n) where
 -- >>> "λy.(λx.λy.x)y" :: Term Foil.VoidS
 -- λ x0 . (λ x1 . λ x2 . x1) x0
 instance IsString (Term Foil.VoidS) where
+  fromString :: String -> Term VoidS
   fromString = unsafeParseTerm
 
 instance Show (MetaTerm Raw.MetaVarIdent n) where
+  show :: MetaTerm MetaVarIdent n -> String
   show = Raw.printTree . fromTerm . fromMetaTerm
 
 -- >>> "λy.(λx.λy.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
 -- λ x0 . (λ x1 . λ x2 . X [x1, x2 X [x2, x1]]) x0
 instance IsString (MetaTerm Raw.MetaVarIdent Foil.VoidS) where
+  fromString :: String -> MetaTerm MetaVarIdent VoidS
   fromString = toMetaTerm . unsafeParseTerm
 
+-- >>> "X [ x, y, z ] ↦ λy.(λx.λy.X[x, y X[y, x]])y" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- X [x0, x1, x2] ↦ λ x3 . (λ x4 . λ x5 . X [x4, x5 X [x5, x4]]) x3
 instance Show (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
+  show :: MetaSubst TermSig MetaVarIdent MetaVarIdent -> String
   show = Raw.printTree . fromMetaSubst
 
--- >>> "λy.(λx.λy.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
--- λ x0 . (λ x1 . λ x2 . X [x1, x2 X [x2, x1]]) x0
+-- >>> "X [ x, y ] ↦ λ x . y" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- X [x0, x1] ↦ λ x2 . x1
 instance IsString (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
+  fromString :: String -> MetaSubst TermSig MetaVarIdent MetaVarIdent
   fromString = unsafeParseMetaSubst
 
 unsafeParseTerm :: String -> Term Foil.VoidS
