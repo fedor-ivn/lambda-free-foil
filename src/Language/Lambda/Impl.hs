@@ -113,6 +113,9 @@ pattern Let' term binder body = Node (L2 (LetSig term (ScopedAST binder body)))
 pattern MetaVar' :: MetaVarIdent -> [AST binder (Sum TermSig q) n] -> AST binder (Sum TermSig q) n
 pattern MetaVar' metavar args = Node (L2 (MetaVarSig metavar args))
 
+pattern MetaSubst' :: MetaVarIdent -> AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n
+pattern MetaSubst' metavar term = Node (L2 (MetaSubstSig metavar term))
+
 -- FV( (λ x. x) y )  =  { y }
 --
 -- λs. λz. s (s z)    :: Term VoidS
@@ -177,12 +180,17 @@ newtype MetaSubsts sig metavar metavar' = MetaSubsts
 -- x = g
 -- (\z. z a) g
 
--- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst]) "λg. λa. λw. X[g, λz. z a]"
--- λ x0 . λ x1 . λ x2 . (λ x3 . x3 x1) x0
--- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst2]) "λg. λw. λa. X[g, λz. z a]"
--- λ x0 . λ x1 . λ x2 . (λ x3 . (λ x3 . x3 x2) x3) x0
--- >>> applyMetaSubsts id Foil.emptyScope (MetaSubsts [exampleSubst2]) "λg. λa. X[g, λz. z a]"
--- λ x0 . λ x1 . (λ x2 . (λ x2 . x2 x1) x2) x0
+-- >>> subst = "X [x0, x1] ↦ x1 x0" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- >>> term = "λg. λa. λw. X[g, λz. z a]"
+-- >>> nfSOASWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
+-- λ x0 . λ x1 . λ x2 . x0 x1
+-- >>> subst = "X [x, y] ↦ (λ z . y z) x" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- >>> term = "λg. λa. λw. X[g, λz. z a]"
+-- >>> nfSOASWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
+-- λ x0 . λ x1 . λ x2 . x0 x1
+-- >>> term = "λg. λa. X[g, λz. z a]"
+-- >>> nfSOASWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
+-- λ x0 . λ x1 . x0 x1
 applyMetaSubsts ::
   (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n) =>
   (metavar -> metavar') ->
@@ -193,7 +201,7 @@ applyMetaSubsts ::
 applyMetaSubsts rename scope substs = \case
   Var x -> Var x
   Node (R2 (MetaAppSig metavar args)) ->
-    let args' = map (applyMetaSubsts rename scope substs) args
+    let args' = map apply args
      in case lookup metavar (getMetaSubst <$> getSubsts substs) of
           Just (MetaAbs names body) ->
             let substs' =
@@ -201,8 +209,10 @@ applyMetaSubsts rename scope substs = \case
                     toNameMap Foil.emptyNameMap names args'
              in substitute scope substs' body
           Nothing -> Node $ R2 $ MetaAppSig (rename metavar) args'
-  Node (L2 term) -> Node $ L2 $ bimap (goScopedAST rename scope substs) (applyMetaSubsts rename scope substs) term
+  Node (L2 term) -> Node $ L2 $ bimap (goScopedAST rename scope substs) apply term
   where
+    apply = applyMetaSubsts rename scope substs
+
     toNameMap :: Foil.NameMap n a -> NameBinderList n l -> [a] -> Foil.NameMap l a
     toNameMap nameMap NameBinderListEmpty [] = nameMap
     toNameMap nameMap (NameBinderListCons binder rest) (x : xs) = toNameMap fresh rest xs
@@ -210,19 +220,49 @@ applyMetaSubsts rename scope substs = \case
         fresh = Foil.addNameBinder binder x nameMap
     toNameMap _ _ _ = error "mismatched name list and argument list"
 
-goScopedAST ::
-  (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n) =>
-  (metavar -> metavar') ->
-  Scope n ->
-  MetaSubsts sig metavar metavar' ->
-  ScopedAST FoilPattern (Sum sig (MetaAppSig metavar)) n ->
-  ScopedAST FoilPattern (Sum sig (MetaAppSig metavar')) n
-goScopedAST rename scope substs (ScopedAST binder body) =
-  case assertDistinct binder of
-    Foil.Distinct ->
-      ScopedAST binder (applyMetaSubsts rename newScope substs body)
-  where
-    newScope = Foil.extendScopePattern binder scope
+    goScopedAST ::
+      (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n) =>
+      (metavar -> metavar') ->
+      Scope n ->
+      MetaSubsts sig metavar metavar' ->
+      ScopedAST FoilPattern (Sum sig (MetaAppSig metavar)) n ->
+      ScopedAST FoilPattern (Sum sig (MetaAppSig metavar')) n
+    goScopedAST rename' scope' substs' (ScopedAST binder body) =
+      case assertDistinct binder of
+        Foil.Distinct ->
+          ScopedAST binder (applyMetaSubsts rename' newScope substs' body)
+      where
+        newScope = Foil.extendScopePattern binder scope'
+
+{-# COMPLETE Var, Lam', App', Let', MetaVar', MetaSubst', MetaApp #-}
+
+nfSOAS ::
+  (Foil.Distinct n) =>
+  Foil.Scope n ->
+  SOAS metavar TermSig n ->
+  SOAS metavar TermSig n
+nfSOAS scope = \case
+  Var x -> Var x
+  Lam' binder body
+    | Foil.Distinct <- Foil.assertDistinct binder ->
+        let extendedScope = Foil.extendScopePattern binder scope
+         in Lam' binder (nfSOAS extendedScope body)
+  App' f x ->
+    case nfSOAS scope f of
+      Lam' binder body ->
+        let subst = matchPattern binder x
+         in nfSOAS scope (substitute scope subst body)
+      f' -> App' f' (nfSOAS scope x)
+  Let' value binder body ->
+    let subst = matchPattern binder value
+        body' = substitute scope subst body
+     in nfSOAS scope body'
+  MetaVar' metavar args -> MetaVar' metavar (map (nfSOAS scope) args)
+  MetaSubst' metavar term -> MetaSubst' metavar (nfSOAS scope term)
+  MetaApp metavar args -> MetaApp metavar (map (nfSOAS scope) args)
+
+nfSOASWithEmptyScope :: SOAS metavar TermSig VoidS -> SOAS metavar TermSig VoidS
+nfSOASWithEmptyScope = nfSOAS Foil.emptyScope
 
 nameMapToSubsts :: Foil.NameMap i (e o) -> Foil.Substitution e i o
 nameMapToSubsts nameMap =
@@ -376,7 +416,7 @@ unsafeParseMetaSubst input =
     tokens = Raw.resolveLayout False (Raw.myLexer input)
 
 -- | Match a pattern against an term.
-matchPattern :: FoilPattern n l -> Term n -> Foil.Substitution Term l n
+matchPattern :: (InjectName t) => FoilPattern n l -> t n -> Foil.Substitution t l n
 matchPattern (FoilAPattern x) = Foil.addSubst Foil.identitySubst x
 
 -- >>> whnf Foil.emptyScope (lam Foil.emptyScope (\x -> App (Var x) (Var x)))
