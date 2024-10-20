@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -204,6 +205,38 @@ scopedArguments (NormalTerm (Heading scope _) arguments _) =
  where
   scopedArgument (NormalTerm (Heading binder head) subarguments returnType) =
     NormalTerm (Heading (scope <> binder) head) subarguments returnType
+
+-- >>> x = Variable "x"
+-- >>> y = Variable "y"
+-- >>> t = Base "t"
+-- >>> u = Base "u"
+--
+-- >>> typeOfTerm (NormalTerm (Heading [(x, t)] y) [] u)
+-- Function (Base "t") (Base "u")
+-- >>> typeOfTerm (NormalTerm (Heading [(x, t), (y, u)] y) [] u)
+-- Function (Base "t") (Function (Base "u") (Base "u"))
+-- >>> typeOfTerm (NormalTerm (Heading [(x, t)] y) [NormalTerm (Heading [] (AVar x)) [] u] u)
+-- Function (Base "t") (Base "u")
+typeOfTerm :: NormalTerm' head -> Type
+typeOfTerm NormalTerm{heading = Heading [] _, returnType} = returnType
+typeOfTerm NormalTerm{heading = Heading ((_, parameterType) : binder) head, ..} =
+  Function parameterType (typeOfTerm (NormalTerm{heading = Heading binder head, ..}))
+
+-- >>> x = Variable "x"
+-- >>> y = Variable "y"
+-- >>> t = Base "t"
+-- >>> u = Base "u"
+--
+-- >>> typeOfHead (NormalTerm (Heading [(x, t)] y) [] u)
+-- Base "u"
+-- >>> typeOfHead (NormalTerm (Heading [(x, t), (y, u)] y) [] u)
+-- Base "u"
+-- >>> typeOfHead (NormalTerm (Heading [(x, t)] y) [NormalTerm (Heading [] (AVar x)) [] u] u)
+-- Function (Base "u") (Base "u")
+typeOfHead :: NormalTerm' head -> Type
+typeOfHead NormalTerm{arguments = [], returnType} = returnType
+typeOfHead NormalTerm{arguments = (argument : arguments), ..} =
+  Function (typeOfTerm argument) (typeOfHead NormalTerm{arguments, ..})
 
 newtype DisagreementSet = DisagreementSet [(NormalTerm, NormalTerm)]
   deriving (Eq, Show)
