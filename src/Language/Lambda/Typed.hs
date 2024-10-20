@@ -1,4 +1,5 @@
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.Lambda.Typed (
@@ -22,6 +23,8 @@ module Language.Lambda.Typed (
   Node (..),
   simplify,
 ) where
+
+import Prelude hiding (head)
 
 data Type
   = Base String
@@ -121,6 +124,7 @@ areAlphaEquivalent _ _ = False
 data NormalTerm' head = NormalTerm
   { heading :: Heading head
   , arguments :: [NormalTerm]
+  , returnType :: Type
   }
   deriving (Eq, Show)
 
@@ -129,64 +133,77 @@ type RigidTerm = NormalTerm' Variable
 type FlexibleTerm = NormalTerm' Metavariable
 
 termKind :: NormalTerm -> Either FlexibleTerm RigidTerm
-termKind (NormalTerm (Heading binder' (AVar head')) arguments') =
-  Right (NormalTerm (Heading binder' head') arguments')
-termKind (NormalTerm (Heading binder' (AMetavar head')) arguments') =
-  Left (NormalTerm (Heading binder' head') arguments')
+termKind NormalTerm{heading = Heading binder (AVar head), ..} =
+  Right (NormalTerm{heading = Heading binder head, ..})
+termKind NormalTerm{heading = Heading binder (AMetavar head), ..} =
+  Left (NormalTerm{heading = Heading binder head, ..})
 
 pattern Rigid :: RigidTerm -> NormalTerm
 pattern Rigid rigid <- (termKind -> Right rigid)
   where
-    Rigid (NormalTerm (Heading binder' head') arguments') =
-      NormalTerm (Heading binder' (AVar head')) arguments'
+    Rigid NormalTerm{heading = Heading binder head, ..} =
+      NormalTerm{heading = Heading binder (AVar head), ..}
 
 pattern Flexible :: FlexibleTerm -> NormalTerm
 pattern Flexible flexible <- (termKind -> Left flexible)
   where
-    Flexible (NormalTerm (Heading binder' head') arguments') =
-      NormalTerm (Heading binder' (AMetavar head')) arguments'
+    Flexible NormalTerm{heading = Heading binder head, ..} =
+      NormalTerm{heading = Heading binder (AMetavar head), ..}
 
 -- >>> x = Variable "x"
 -- >>> y = Variable "y"
 -- >>> z = Variable "z"
 -- >>> t = Base "t"
--- >>> u = Base "u"
+-- >>> typeOfAtom var = if var == AVar x then Just (Function t (Function t t)) else Just t
 --
--- >>> asNormalTerm (Var x)
--- Just (NormalTerm {heading = Heading {binder = [], head = AVar (Variable "x")}, arguments = []})
--- >>> asNormalTerm (Application (Var x) (Var y))
--- Just (NormalTerm {heading = Heading {binder = [], head = AVar (Variable "x")}, arguments = [NormalTerm {heading = Heading {binder = [], head = AVar (Variable "y")}, arguments = []}]})
--- >>> asNormalTerm (Application (Application (Var x) (Var y)) (Var z))
--- Just (NormalTerm {heading = Heading {binder = [], head = AVar (Variable "x")}, arguments = [NormalTerm {heading = Heading {binder = [], head = AVar (Variable "y")}, arguments = []},NormalTerm {heading = Heading {binder = [], head = AVar (Variable "z")}, arguments = []}]})
--- >>> asNormalTerm (Lambda z t (Var x))
--- Just (NormalTerm {heading = Heading {binder = [(Variable "z",Base "t")], head = AVar (Variable "x")}, arguments = []})
--- >>> asNormalTerm (Lambda y t (Lambda z t (Var x)))
--- Just (NormalTerm {heading = Heading {binder = [(Variable "y",Base "t"),(Variable "z",Base "t")], head = AVar (Variable "x")}, arguments = []})
--- >>> asNormalTerm (Lambda z t (Application (Var x) (Var y)))
--- Just (NormalTerm {heading = Heading {binder = [(Variable "z",Base "t")], head = AVar (Variable "x")}, arguments = [NormalTerm {heading = Heading {binder = [], head = AVar (Variable "y")}, arguments = []}]})
--- >>> asNormalTerm (Application (Lambda x t (Var x)) (Var y))
+-- >>> asNormalTerm typeOfAtom (Var x)
+-- Just (NormalTerm {heading = Heading {binder = [], head = AVar (Variable "x")}, arguments = [], returnType = Function (Base "t") (Function (Base "t") (Base "t"))})
+--
+-- >>> asNormalTerm typeOfAtom (Application (Var x) (Var y))
+-- Just (NormalTerm {heading = Heading {binder = [], head = AVar (Variable "x")}, arguments = [NormalTerm {heading = Heading {binder = [], head = AVar (Variable "y")}, arguments = [], returnType = Base "t"}], returnType = Function (Base "t") (Base "t")})
+--
+-- >>> asNormalTerm typeOfAtom (Application (Application (Var x) (Var y)) (Var z))
+-- Just (NormalTerm {heading = Heading {binder = [], head = AVar (Variable "x")}, arguments = [NormalTerm {heading = Heading {binder = [], head = AVar (Variable "y")}, arguments = [], returnType = Base "t"},NormalTerm {heading = Heading {binder = [], head = AVar (Variable "z")}, arguments = [], returnType = Base "t"}], returnType = Base "t"})
+--
+-- >>> asNormalTerm typeOfAtom (Lambda z t (Var x))
+-- Just (NormalTerm {heading = Heading {binder = [(Variable "z",Base "t")], head = AVar (Variable "x")}, arguments = [], returnType = Function (Base "t") (Function (Base "t") (Base "t"))})
+--
+-- >>> asNormalTerm typeOfAtom (Lambda y t (Lambda z t (Var x)))
+-- Just (NormalTerm {heading = Heading {binder = [(Variable "y",Base "t"),(Variable "z",Base "t")], head = AVar (Variable "x")}, arguments = [], returnType = Function (Base "t") (Function (Base "t") (Base "t"))})
+--
+-- >>> asNormalTerm typeOfAtom (Lambda z t (Application (Var x) (Var y)))
+-- Just (NormalTerm {heading = Heading {binder = [(Variable "z",Base "t")], head = AVar (Variable "x")}, arguments = [NormalTerm {heading = Heading {binder = [], head = AVar (Variable "y")}, arguments = [], returnType = Base "t"}], returnType = Function (Base "t") (Base "t")})
+--
+-- >>> asNormalTerm typeOfAtom (Application (Lambda x t (Var x)) (Var y))
 -- Nothing
--- >>> asNormalTerm (Lambda x t (Application (Lambda z t (Var z)) (Var y)))
+--
+-- >>> asNormalTerm typeOfAtom (Lambda x t (Application (Lambda z t (Var z)) (Var y)))
 -- Nothing
-asNormalTerm :: Expression -> Maybe NormalTerm
-asNormalTerm (Lambda variable typ body) = do
-  NormalTerm (Heading binder' head') arguments' <- asNormalTerm body
-  Just (NormalTerm (Heading ((variable, typ) : binder') head') arguments')
-asNormalTerm other = extractBody other
+asNormalTerm :: (Atom -> Maybe Type) -> Expression -> Maybe NormalTerm
+asNormalTerm typeOfAtom (Lambda variable typ body) = do
+  let typeOfAtom' var
+        | var == AVar variable = Just typ
+        | otherwise = typeOfAtom var
+  NormalTerm{heading = (Heading binder head), ..} <- asNormalTerm typeOfAtom' body
+  Just (NormalTerm{heading = Heading ((variable, typ) : binder) head, ..})
+asNormalTerm typeOfAtom other = do
+  returnType <- typeOf typeOfAtom other
+  (heading, arguments) <- extractBody other
+  return (NormalTerm heading arguments returnType)
  where
   extractBody Lambda{} = Nothing
   extractBody (Application function argument) = do
-    NormalTerm heading' arguments' <- extractBody function
-    argument' <- asNormalTerm argument
-    Just (NormalTerm heading' (arguments' <> [argument']))
-  extractBody (Atom head') = Just (NormalTerm (Heading [] head') [])
+    (heading, arguments) <- extractBody function
+    normalArgument <- asNormalTerm typeOfAtom argument
+    Just (heading, arguments <> [normalArgument])
+  extractBody (Atom head) = Just (Heading [] head, [])
 
 scopedArguments :: NormalTerm' head -> [NormalTerm]
-scopedArguments (NormalTerm (Heading scope _) arguments') =
-  scopedArgument <$> arguments'
+scopedArguments (NormalTerm (Heading scope _) arguments _) =
+  scopedArgument <$> arguments
  where
-  scopedArgument (NormalTerm (Heading binder' head') subarguments) =
-    NormalTerm (Heading (scope <> binder') head') subarguments
+  scopedArgument (NormalTerm (Heading binder head) subarguments returnType) =
+    NormalTerm (Heading (scope <> binder) head) subarguments returnType
 
 newtype DisagreementSet = DisagreementSet [(NormalTerm, NormalTerm)]
   deriving (Eq, Show)
@@ -210,25 +227,25 @@ data Node
 -- >>> x = Metavariable "X"
 -- >>> y = Metavariable "Y"
 -- >>> t = Base "t"
--- >>> var v = NormalTerm (Heading [] (AVar v)) []
--- >>> meta v = NormalTerm (Heading [] (AMetavar v)) []
+-- >>> var v t = NormalTerm (Heading [] (AVar v)) [] t
+-- >>> meta v t = NormalTerm (Heading [] (AMetavar v)) [] t
 --
--- >>> left = NormalTerm (Heading [] (AVar a)) [NormalTerm (Heading [(u, t)] (AVar b)) [meta x, var u], var c]
--- >>> right = NormalTerm (Heading [] (AVar a)) [NormalTerm (Heading [(v, t)] (AVar b)) [meta y, var v], NormalTerm (Heading [] (AMetavar f)) [var c]]
+-- >>> left = NormalTerm (Heading [] (AVar a)) [NormalTerm (Heading [(u, t)] (AVar b)) [meta x t, var u t] t, var c t] t
+-- >>> right = NormalTerm (Heading [] (AVar a)) [NormalTerm (Heading [(v, t)] (AVar b)) [meta y t, var v t] t, NormalTerm (Heading [] (AMetavar f)) [var c t] t] t
 -- >>> simplified = simplify (DisagreementSet [(left, right)])
--- >>> expected = Nonterminal (DisagreementSet [(NormalTerm (Heading [(u, t)] (AMetavar x)) [], NormalTerm (Heading [(v, t)] (AMetavar y)) []), (NormalTerm (Heading [] (AMetavar f)) [var c], var c)])
+-- >>> expected = Nonterminal (DisagreementSet [(NormalTerm (Heading [(u, t)] (AMetavar x)) [] t, NormalTerm (Heading [(v, t)] (AMetavar y)) [] t), (NormalTerm (Heading [] (AMetavar f)) [var c t] t, var c t)])
 -- >>> simplified == expected
 -- True
 --
--- >>> left = NormalTerm (Heading [] (AVar a)) [NormalTerm (Heading [(u, t)] (AVar b)) [meta x, var u]]
--- >>> right = NormalTerm (Heading [] (AVar a)) [NormalTerm (Heading [(v, t)] (AVar b)) [meta y, var v]]
+-- >>> left = NormalTerm (Heading [] (AVar a)) [NormalTerm (Heading [(u, t)] (AVar b)) [meta x t, var u t] t] t
+-- >>> right = NormalTerm (Heading [] (AVar a)) [NormalTerm (Heading [(v, t)] (AVar b)) [meta y t, var v t] t] t
 -- >>> simplified = simplify (DisagreementSet [(left, right)])
--- >>> expected = Nonterminal (DisagreementSet [(NormalTerm (Heading [(u, t)] (AMetavar x)) [], NormalTerm (Heading [(v, t)] (AMetavar y)) [])])
+-- >>> expected = Nonterminal (DisagreementSet [(NormalTerm (Heading [(u, t)] (AMetavar x)) [] t, NormalTerm (Heading [(v, t)] (AMetavar y)) [] t)])
 -- >>> simplified == expected
 -- True
 --
--- >>> left = NormalTerm (Heading [(u, t), (v, t)] (AVar a)) [var u, NormalTerm (Heading [(w, t)] (AVar v)) []]
--- >>> right = NormalTerm (Heading [(v, t), (w, t)] (AVar a)) [var v, NormalTerm (Heading [(u, t)] (AVar v)) []]
+-- >>> left = NormalTerm (Heading [(u, t), (v, t)] (AVar a)) [var u t, NormalTerm (Heading [(w, t)] (AVar v)) [] t] t
+-- >>> right = NormalTerm (Heading [(v, t), (w, t)] (AVar a)) [var v t, NormalTerm (Heading [(u, t)] (AVar v)) [] t] t
 -- >>> simplify (DisagreementSet [(left, right)])
 -- Failure
 simplify :: DisagreementSet -> Node
