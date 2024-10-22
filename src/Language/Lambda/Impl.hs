@@ -271,7 +271,7 @@ nameMapToSubsts nameMap =
 -- ** Conversion helpers for 'MetaSubst'
 
 toMetaSubst :: Raw.MetaSubst -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
-toMetaSubst (Raw.MetaSubst metavar vars term) =
+toMetaSubst (Raw.AMetaSubst metavar vars term) =
   withMetaSubstVars vars Foil.emptyScope Map.empty NameBinderListEmpty $ \scope env binderList ->
     let term' = toTerm scope env (getTermFromScopedTerm term)
      in MetaSubst (metavar, MetaAbs binderList (toMetaTerm term'))
@@ -307,7 +307,7 @@ fromMetaSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent -> Raw.Meta
 fromMetaSubst (MetaSubst (metavar, MetaAbs binderList term)) =
   let term' = Raw.AScopedTerm $ fromTerm $ fromMetaTerm term
       idents = toVarIdentList binderList
-   in Raw.MetaSubst metavar idents term'
+   in Raw.AMetaSubst metavar idents term'
   where
     toVarIdentList :: NameBinderList i n -> [Raw.VarIdent]
     toVarIdentList NameBinderListEmpty = []
