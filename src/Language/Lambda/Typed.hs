@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -23,8 +24,10 @@ module Language.Lambda.Typed (
   DisagreementSet (..),
   Node (..),
   simplify,
+  match,
 ) where
 
+import Data.Functor ((<&>))
 import Prelude hiding (head)
 
 data Type
@@ -122,6 +125,13 @@ areAlphaEquivalent
           (Heading rightBinder rightHead)
 areAlphaEquivalent _ _ = False
 
+imitatableHead :: Heading Variable -> Int -> Maybe Variable
+imitatableHead (Heading [] head) _ = Just head
+imitatableHead (Heading ((variable, _) : binder) head) n
+  | variable == head = Nothing
+  | n <= 0 = Just head
+  | otherwise = imitatableHead (Heading binder head) (n - 1)
+
 data NormalTerm' head = NormalTerm
   { heading :: Heading head
   , arguments :: [NormalTerm]
@@ -132,6 +142,15 @@ data NormalTerm' head = NormalTerm
 type NormalTerm = NormalTerm' Atom
 type RigidTerm = NormalTerm' Variable
 type FlexibleTerm = NormalTerm' Metavariable
+
+pattern Term :: [(Variable, Type)] -> head -> [NormalTerm] -> Type -> NormalTerm' head
+pattern Term binder head arguments returnType = NormalTerm (Heading binder head) arguments returnType
+
+apply :: head -> [NormalTerm] -> Type -> NormalTerm' head
+apply = Term []
+
+var :: head -> Type -> NormalTerm' head
+var head = apply head []
 
 termKind :: NormalTerm -> Either FlexibleTerm RigidTerm
 termKind NormalTerm{heading = Heading binder (AVar head), ..} =
@@ -298,3 +317,56 @@ simplify (DisagreementSet set) = case simplifyRigidPairs set of
   -- TODO: is this really needed here?
   putRigidOnRight (left@(Rigid _), right) = (right, left)
   putRigidOnRight (left, right) = (left, right)
+
+data Stream a = Stream a (Stream a) deriving (Eq, Show, Functor)
+
+zipWithList :: Stream a -> [b] -> (Stream a, [(a, b)])
+zipWithList as [] = (as, [])
+zipWithList (Stream a as) (b : bs) = (as', (a, b) : bs')
+ where
+  (as', bs') = zipWithList as bs
+
+integers :: Int -> Stream Int
+integers n = Stream n (integers (n + 1))
+
+someMetavariables :: Stream Metavariable
+someMetavariables = fmap (\x -> Metavariable ("M" <> show x)) (integers 0)
+
+someVariables :: Stream Variable
+someVariables = fmap (\x -> Variable ("v" <> show x)) (integers 0)
+
+match
+  :: FlexibleTerm
+  -> RigidTerm
+  -> Stream Variable
+  -> Stream Metavariable
+  -> [(NormalTerm, Stream Variable, Stream Metavariable)]
+match flexible rigid variables metavariables
+  | n < 0 = []
+  | otherwise = imitate
+ where
+  n_flexible = length (binder (heading flexible))
+  n_rigid = length (binder (heading rigid))
+  n = n_rigid - n_flexible
+
+  imitate =
+    case imitatableHead (heading rigid) n_flexible of
+      Nothing -> []
+      Just head
+        | n > 0 -> [imitateWithExtendedBinder head]
+        | otherwise -> _todo
+
+  imitateWithExtendedBinder head = (term, variables', metavariables')
+   where
+    term = Term binder' (AVar head) arguments' (returnType rigid)
+    (variables', wsBinder) = zipWithList variables (typeOfTerm <$> arguments flexible)
+    vsBinder = drop (length wsBinder) (binder (heading rigid))
+    binder' = wsBinder <> vsBinder
+    parameters =
+      binder' <&> \(parameter, returnType) ->
+        var (AVar parameter) returnType
+
+    (metavariables', hs) = zipWithList metavariables (returnType <$> arguments rigid)
+    arguments' =
+      hs <&> \(h, returnType) ->
+        apply (AMetavar h) parameters returnType
