@@ -33,6 +33,7 @@ dependencies:
   array: ">= 0.5.3.0"
   bifunctors:
   containers:
+  kind-generics-th:
 
 build-tools:
   alex: ">= 3.2.4"

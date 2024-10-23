@@ -28,5 +28,6 @@ AScopedTerm. ScopedTerm ::= Term ;
 APattern. Pattern ::= VarIdent ;
 
 AMetaSubst. MetaSubst ::= MetaVarIdent "[" [VarIdent] "]" "↦" ScopedTerm ;
+AUnificationProblem. UnificationProblem ::= "∀" [VarIdent] "." ScopedTerm "=" ScopedTerm ;
 
 separator VarIdent "," ;

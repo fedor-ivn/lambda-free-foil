@@ -18,6 +18,7 @@ module Language.Lambda.Syntax.Par
   , pScopedTerm
   , pPattern
   , pMetaSubst
+  , pUnificationProblem
   , pListVarIdent
   ) where
 
@@ -38,6 +39,7 @@ import Language.Lambda.Syntax.Lex
 %name pScopedTerm ScopedTerm
 %name pPattern Pattern
 %name pMetaSubst MetaSubst
+%name pUnificationProblem UnificationProblem
 %name pListVarIdent ListVarIdent
 -- no lexer declaration
 %monad { Err } { (>>=) } { return }
@@ -56,6 +58,7 @@ import Language.Lambda.Syntax.Lex
   'let'          { PT _ (TS _ 11)           }
   'λ'            { PT _ (TS _ 12)           }
   '↦'            { PT _ (TS _ 13)           }
+  '∀'            { PT _ (TS _ 14)           }
   L_VarIdent     { PT _ (T_VarIdent $$)     }
   L_MetaVarIdent { PT _ (T_MetaVarIdent $$) }
 
@@ -109,7 +112,11 @@ Pattern : VarIdent { Language.Lambda.Syntax.Abs.APattern $1 }
 
 MetaSubst :: { Language.Lambda.Syntax.Abs.MetaSubst }
 MetaSubst
-  : MetaVarIdent '[' ListVarIdent ']' '↦' ScopedTerm { Language.Lambda.Syntax.Abs.MetaSubst $1 $3 $6 }
+  : MetaVarIdent '[' ListVarIdent ']' '↦' ScopedTerm { Language.Lambda.Syntax.Abs.AMetaSubst $1 $3 $6 }
+
+UnificationProblem :: { Language.Lambda.Syntax.Abs.UnificationProblem }
+UnificationProblem
+  : '∀' ListVarIdent '.' ScopedTerm '=' ScopedTerm { Language.Lambda.Syntax.Abs.AUnificationProblem $2 $4 $6 }
 
 ListVarIdent :: { [Language.Lambda.Syntax.Abs.VarIdent] }
 ListVarIdent
