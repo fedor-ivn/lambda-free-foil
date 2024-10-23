@@ -316,24 +316,25 @@ toVarIdentList (NameBinderListCons x xs) =
   let ident = Raw.VarIdent $ "x" ++ show (Foil.nameOf x)
    in ident : toVarIdentList xs
 
-data UnificationProblem where
-  UnificationProblem ::
+data UnificationConstraint where
+  UnificationConstraint ::
+    (Distinct n) =>
     Scope n ->
     NameBinderList Foil.VoidS n ->
     MetaTerm Raw.MetaVarIdent n ->
     MetaTerm Raw.MetaVarIdent n ->
-    UnificationProblem
+    UnificationConstraint
 
-toUnificationProblem :: Raw.UnificationProblem -> UnificationProblem
-toUnificationProblem (Raw.AUnificationProblem vars lhs rhs) =
+toUnificationConstraint :: Raw.UnificationConstraint -> UnificationConstraint
+toUnificationConstraint (Raw.AUnificationConstraint vars lhs rhs) =
   withMetaSubstVars vars Foil.emptyScope Map.empty NameBinderListEmpty $ \scope env binders ->
     let toMetaTerm' = toMetaTerm . toTerm scope env . getTermFromScopedTerm
-     in UnificationProblem scope binders (toMetaTerm' lhs) (toMetaTerm' rhs)
+     in UnificationConstraint scope binders (toMetaTerm' lhs) (toMetaTerm' rhs)
 
-fromUnificationProblem :: UnificationProblem -> Raw.UnificationProblem
-fromUnificationProblem (UnificationProblem _ binders lhs rhs) =
+fromUnificationConstraint :: UnificationConstraint -> Raw.UnificationConstraint
+fromUnificationConstraint (UnificationConstraint _ binders lhs rhs) =
   let fromMetaTerm' = Raw.AScopedTerm . fromTerm . fromMetaTerm
-   in Raw.AUnificationProblem (toVarIdentList binders) (fromMetaTerm' lhs) (fromMetaTerm' rhs)
+   in Raw.AUnificationConstraint (toVarIdentList binders) (fromMetaTerm' lhs) (fromMetaTerm' rhs)
 
 -- ** Conversion helpers for 'MetaTerm'
 
@@ -442,21 +443,21 @@ unsafeParseMetaSubst input =
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
 
--- >>> "∀ m, n. Y[m, X[n, m]] = (λ x . m (x n)) m" :: UnificationProblem
+-- >>> "∀ m, n. Y[m, X[n, m]] = (λ x . m (x n)) m" :: UnificationConstraint
 -- ∀ x0, x1 . Y [x0, X [x1, x0]] = (λ x2 . x0 (x2 x1)) x0
-instance IsString UnificationProblem where
-  fromString :: String -> UnificationProblem
-  fromString = unsafeParseUnificationProblem
+instance IsString UnificationConstraint where
+  fromString :: String -> UnificationConstraint
+  fromString = unsafeParseUnificationConstraint
 
-instance Show UnificationProblem where
-  show :: UnificationProblem -> String
-  show = Raw.printTree . fromUnificationProblem
+instance Show UnificationConstraint where
+  show :: UnificationConstraint -> String
+  show = Raw.printTree . fromUnificationConstraint
 
-unsafeParseUnificationProblem :: String -> UnificationProblem
-unsafeParseUnificationProblem input =
-  case Raw.pUnificationProblem tokens of
+unsafeParseUnificationConstraint :: String -> UnificationConstraint
+unsafeParseUnificationConstraint input =
+  case Raw.pUnificationConstraint tokens of
     Left err -> error err
-    Right problem -> toUnificationProblem problem
+    Right problem -> toUnificationConstraint problem
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
 
@@ -551,3 +552,20 @@ main = do
     showTree tree = do
       putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
       putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree
+
+-- ** Test framework implementation
+
+-- >>> constraint = "∀ g, a, w. X[g, λz. z a] = g a" :: UnificationConstraint
+-- >>> subst = "X [x, y] ↦ (λ z . y z) x" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- >>> isSolved (solveUnificationConstraint constraint (MetaSubsts [subst]))
+-- True
+solveUnificationConstraint ::
+  UnificationConstraint ->
+  MetaSubsts TermSig Raw.MetaVarIdent Raw.MetaVarIdent ->
+  UnificationConstraint
+solveUnificationConstraint (UnificationConstraint scope binders lhs rhs) substs =
+  let solve = nfMetaTerm scope . applyMetaSubsts id scope substs
+   in UnificationConstraint scope binders (solve lhs) (solve rhs)
+
+isSolved :: UnificationConstraint -> Bool
+isSolved (UnificationConstraint scope _ lhs rhs) = alphaEquiv scope lhs rhs

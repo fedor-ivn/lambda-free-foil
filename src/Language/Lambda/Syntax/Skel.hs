@@ -51,6 +51,6 @@ transMetaSubst :: Language.Lambda.Syntax.Abs.MetaSubst -> Result
 transMetaSubst x = case x of
   Language.Lambda.Syntax.Abs.AMetaSubst metavarident varidents scopedterm -> failure x
 
-transUnificationProblem :: Language.Lambda.Syntax.Abs.UnificationProblem -> Result
-transUnificationProblem x = case x of
-  Language.Lambda.Syntax.Abs.AUnificationProblem varidents scopedterm1 scopedterm2 -> failure x
+transUnificationConstraint :: Language.Lambda.Syntax.Abs.UnificationConstraint -> Result
+transUnificationConstraint x = case x of
+  Language.Lambda.Syntax.Abs.AUnificationConstraint varidents scopedterm1 scopedterm2 -> failure x

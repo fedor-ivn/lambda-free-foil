@@ -15,7 +15,7 @@ module Language.Lambda.Syntax.Par
   , pScopedTerm
   , pPattern
   , pMetaSubst
-  , pUnificationProblem
+  , pUnificationConstraint
   , pListVarIdent
   ) where
 
@@ -43,7 +43,7 @@ data HappyAbsSyn
 	| HappyAbsSyn24 (Language.Lambda.Syntax.Abs.ScopedTerm)
 	| HappyAbsSyn25 (Language.Lambda.Syntax.Abs.Pattern)
 	| HappyAbsSyn26 (Language.Lambda.Syntax.Abs.MetaSubst)
-	| HappyAbsSyn27 (Language.Lambda.Syntax.Abs.UnificationProblem)
+	| HappyAbsSyn27 (Language.Lambda.Syntax.Abs.UnificationConstraint)
 	| HappyAbsSyn28 ([Language.Lambda.Syntax.Abs.VarIdent])
 
 {- to allow type-synonyms as our monads (likely
@@ -180,7 +180,7 @@ happyExpList = Happy_Data_Array.listArray (0,180) ([0,0,16,0,0,2,0,16384,0,0,245
 {-# NOINLINE happyExpListPerState #-}
 happyExpListPerState st =
     token_strs_expected
-  where token_strs = ["error","%dummy","%start_pProgram","%start_pCommand","%start_pListCommand","%start_pTerm","%start_pTerm1","%start_pTerm2","%start_pListTerm","%start_pScopedTerm","%start_pPattern","%start_pMetaSubst","%start_pUnificationProblem","%start_pListVarIdent","VarIdent","MetaVarIdent","Program","Command","ListCommand","Term","Term1","Term2","ListTerm","ScopedTerm","Pattern","MetaSubst","UnificationProblem","ListVarIdent","'('","')'","','","'.'","';'","'='","'['","']'","'compute'","'in'","'let'","'\955'","'\8614'","'\8704'","L_VarIdent","L_MetaVarIdent","%eof"]
+  where token_strs = ["error","%dummy","%start_pProgram","%start_pCommand","%start_pListCommand","%start_pTerm","%start_pTerm1","%start_pTerm2","%start_pListTerm","%start_pScopedTerm","%start_pPattern","%start_pMetaSubst","%start_pUnificationConstraint","%start_pListVarIdent","VarIdent","MetaVarIdent","Program","Command","ListCommand","Term","Term1","Term2","ListTerm","ScopedTerm","Pattern","MetaSubst","UnificationConstraint","ListVarIdent","'('","')'","','","'.'","';'","'='","'['","']'","'compute'","'in'","'let'","'\955'","'\8614'","'\8704'","L_VarIdent","L_MetaVarIdent","%eof"]
         bit_start = st Prelude.* 45
         bit_end = (st Prelude.+ 1) Prelude.* 45
         read_bit = readArrayBit happyExpList
@@ -736,7 +736,7 @@ happyReduction_32 ((HappyAbsSyn24  happy_var_6) `HappyStk`
 	_ `HappyStk`
 	happyRest)
 	 = HappyAbsSyn27
-		 (Language.Lambda.Syntax.Abs.AUnificationProblem happy_var_2 happy_var_4 happy_var_6
+		 (Language.Lambda.Syntax.Abs.AUnificationConstraint happy_var_2 happy_var_4 happy_var_6
 	) `HappyStk` happyRest
 
 happyReduce_33 = happySpecReduce_0  28 happyReduction_33
@@ -827,7 +827,7 @@ pPattern tks = happySomeParser where
 pMetaSubst tks = happySomeParser where
  happySomeParser = happyThen (happyParse action_9 tks) (\x -> case x of {HappyAbsSyn26 z -> happyReturn z; _other -> notHappyAtAll })
 
-pUnificationProblem tks = happySomeParser where
+pUnificationConstraint tks = happySomeParser where
  happySomeParser = happyThen (happyParse action_10 tks) (\x -> case x of {HappyAbsSyn27 z -> happyReturn z; _other -> notHappyAtAll })
 
 pListVarIdent tks = happySomeParser where

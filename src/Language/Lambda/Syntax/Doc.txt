@@ -59,7 +59,7 @@ All other symbols are terminals.
   | //ScopedTerm// | -> | //Term//
   | //Pattern// | -> | //VarIdent//
   | //MetaSubst// | -> | //MetaVarIdent// ``[`` //[VarIdent]// ``]`` ``↦`` //ScopedTerm//
-  | //UnificationProblem// | -> | ``∀`` //[VarIdent]// ``.`` //ScopedTerm// ``=`` //ScopedTerm//
+  | //UnificationConstraint// | -> | ``∀`` //[VarIdent]// ``.`` //ScopedTerm// ``=`` //ScopedTerm//
   | //[VarIdent]// | -> | **eps**
   |  |  **|**  | //VarIdent//
   |  |  **|**  | //VarIdent// ``,`` //[VarIdent]//
