@@ -34,6 +34,8 @@ dependencies:
   bifunctors:
   containers:
   kind-generics-th:
+  text:
+  tomland:
 
 build-tools:
   alex: ">= 3.2.4"

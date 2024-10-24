@@ -7,6 +7,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -49,19 +50,24 @@ import Control.Monad.Foil.TH
 import Control.Monad.Free.Foil
 import Control.Monad.Free.Foil.Generic
 import Control.Monad.Free.Foil.TH
-import Data.Biapplicative (Bifunctor (bimap))
+import Data.Biapplicative (Bifunctor (bimap, first))
 import Data.Bifunctor.Sum
 import Data.Bifunctor.TH
+import Data.Either (partitionEithers)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.String (IsString (..))
+import Data.Text (Text)
+import qualified Data.Text as TIO
+import GHC.Generics (Generic)
 import qualified GHC.Generics as GHC
 import Generics.Kind.TH (deriveGenericK)
 import qualified Language.Lambda.Syntax.Abs as Raw
 import qualified Language.Lambda.Syntax.Layout as Raw
 import qualified Language.Lambda.Syntax.Par as Raw
 import qualified Language.Lambda.Syntax.Print as Raw
-import System.Exit (exitFailure)
+import Toml (TomlCodec, (.=))
+import qualified Toml
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -435,13 +441,13 @@ unsafeParseTerm input =
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
 
+parseMetaSubst :: String -> Either String (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent)
+parseMetaSubst input =
+  let tokens = Raw.resolveLayout False (Raw.myLexer input)
+   in toMetaSubst <$> Raw.pMetaSubst tokens
+
 unsafeParseMetaSubst :: String -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
-unsafeParseMetaSubst input =
-  case Raw.pMetaSubst tokens of
-    Left err -> error err
-    Right subst -> toMetaSubst subst
-  where
-    tokens = Raw.resolveLayout False (Raw.myLexer input)
+unsafeParseMetaSubst = either error id . parseMetaSubst
 
 -- >>> "∀ m, n. Y[m, X[n, m]] = (λ x . m (x n)) m" :: UnificationConstraint
 -- ∀ x0, x1 . Y [x0, X [x1, x0]] = (λ x2 . x0 (x2 x1)) x0
@@ -533,39 +539,150 @@ interpretProgram (Raw.AProgram commands) = mapM_ interpretCommand commands
 --       putStrLn "\nParse Successful! Interpreting..."
 --       interpretProgram program
 
-main :: IO ()
-main = do
-  input <- getContents
-  let tokens = Raw.resolveLayout True $ Raw.myLexer input
-  case Raw.pProgram tokens of
-    Left err -> do
-      putStrLn "\nParse              Failed...\n"
-      -- putStrLn "Tokens:"
-      -- mapM_ (putStrLn . showPosToken . mkPosToken) tokens
-      putStrLn err
-      exitFailure
-    Right program -> do
-      putStrLn "\nParse Successful!"
-      showTree program
-  where
-    showTree :: (Show a, Raw.Print a) => a -> IO ()
-    showTree tree = do
-      putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
-      putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree
+-- main :: IO ()
+-- main = do
+--   input <- getContents
+--   let tokens = Raw.resolveLayout True $ Raw.myLexer input
+--   case Raw.pProgram tokens of
+--     Left err -> do
+--       putStrLn "\nParse              Failed...\n"
+--       -- putStrLn "Tokens:"
+--       -- mapM_ (putStrLn . showPosToken . mkPosToken) tokens
+--       putStrLn err
+--       exitFailure
+--     Right program -> do
+--       putStrLn "\nParse Successful!"
+--       showTree program
+--   where
+--     showTree :: (Show a, Raw.Print a) => a -> IO ()
+--     showTree tree = do
+--       putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
+--       putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree
 
 -- ** Test framework implementation
 
 -- >>> constraint = "∀ g, a, w. X[g, λz. z a] = g a" :: UnificationConstraint
--- >>> subst = "X [x, y] ↦ (λ z . y z) x" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- >>> subst = "X[x, y] ↦ (λ z . y z) x" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 -- >>> isSolved (solveUnificationConstraint constraint (MetaSubsts [subst]))
 -- True
+-- >>> constraint1 = "∀ f, x . X[f, x] = f Y[x]" :: UnificationConstraint
+-- >>> constraint2 = "∀ x . Y[x] = x x" :: UnificationConstraint
+-- >>> subst1 = "Y[x] ↦ x x" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- >>> subst2 = "X[f, x] ↦ f (x x)" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- >>> subst3 = "M[x, y] ↦ y x" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- >>> all id (map isSolved . solveUnificationConstraint (MetaSubsts [subst1, subst2, subst3])) [constraint1, constraint2])
+-- True
+
 solveUnificationConstraint ::
-  UnificationConstraint ->
   MetaSubsts TermSig Raw.MetaVarIdent Raw.MetaVarIdent ->
+  UnificationConstraint ->
   UnificationConstraint
-solveUnificationConstraint (UnificationConstraint scope binders lhs rhs) substs =
+solveUnificationConstraint substs (UnificationConstraint scope binders lhs rhs) =
   let solve = nfMetaTerm scope . applyMetaSubsts id scope substs
    in UnificationConstraint scope binders (solve lhs) (solve rhs)
 
 isSolved :: UnificationConstraint -> Bool
 isSolved (UnificationConstraint scope _ lhs rhs) = alphaEquiv scope lhs rhs
+
+-- Data types
+data Config = Config
+  { configLanguage :: Text,
+    configFragment :: Text,
+    configProblems :: [Problem]
+  }
+  deriving (Show, Generic)
+
+data Problem = Problem
+  { problemConstraints :: [UnificationConstraint],
+    problemSolutions :: [Solution]
+  }
+  deriving (Show, Generic)
+
+data Solution = Solution
+  { solutionName :: Text,
+    solutionSubstitutions ::
+      [MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent]
+  }
+  deriving (Show, Generic)
+
+-- TomlCodecs
+configCodec :: TomlCodec Config
+configCodec =
+  Config
+    <$> Toml.text "language" .= configLanguage
+    <*> Toml.text "fragment" .= configFragment
+    <*> Toml.list problemCodec "problems" .= configProblems
+
+problemCodec :: TomlCodec Problem
+problemCodec =
+  Problem
+    <$> constraintsCodec
+    <*> Toml.list solutionCodec "solutions" .= problemSolutions
+  where
+    constraintsCodec =
+      map (unsafeParseUnificationConstraint . TIO.unpack)
+        <$> Toml.arrayOf Toml._Text "constraints" .= error "no encode needed"
+
+parseTextToEither :: (String -> Either String a) -> Text -> Either Text a
+parseTextToEither parse = first fromString . parse . TIO.unpack
+
+solutionCodec :: TomlCodec Solution
+solutionCodec =
+  Solution
+    <$> Toml.text "name" .= solutionName
+    <*> substitutionsCodec
+  where
+    substitutionsCodec =
+      map (unsafeParseMetaSubst . TIO.unpack)
+        <$> Toml.arrayOf Toml._Text "substitutions" .= error "no encode needed"
+
+toCodec :: (Show a) => (String -> Either String a) -> Toml.Key -> TomlCodec a
+toCodec parseString =
+  let parseText = first fromString . parseString . TIO.unpack
+      showText = TIO.pack . show
+   in Toml.textBy showText parseText
+
+validateProblem :: Problem -> ([(Solution, [UnificationConstraint])], [Solution])
+validateProblem (Problem constraints solutions) =
+  let results = map (validateSolution constraints) solutions
+   in partitionEithers results
+
+-- Helper function to check if a constraint is solved by a specific solution
+validateSolution :: [UnificationConstraint] -> Solution -> Either (Solution, [UnificationConstraint]) Solution
+validateSolution constraints solution =
+  let substs = MetaSubsts (solutionSubstitutions solution)
+      constraints' = map (solveUnificationConstraint substs) constraints
+   in if all isSolved constraints'
+        then Right solution
+        else Left (solution, constraints')
+
+printInvalidSolutionsWithConstraint :: (Foldable t, Show a) => (Solution, t a) -> IO ()
+printInvalidSolutionsWithConstraint (solution, constraints) = do
+  putStrLn $ replicate 25 '-' <> "\n"
+  putStrLn $ "Solution: " <> TIO.unpack (solutionName solution)
+  putStrLn ""
+  putStrLn "Substitutions:"
+  mapM_ (putStrLn . ("- " ++) . show) (solutionSubstitutions solution)
+  putStrLn ""
+  putStrLn "Constraints with applied substitutions:"
+  mapM_ (putStrLn . ("- " ++) . show) constraints
+  putStrLn ""
+  putStrLn $ replicate 25 '-' <> "\n"
+
+
+-- Main function to parse and print the configuration
+main :: IO ()
+main = do
+  configResult <- Toml.decodeFileEither configCodec "config.toml"
+  case configResult of
+    Left err -> print err
+    Right cfg -> do
+      mapM_ validateAndPrintProblem (configProblems cfg)
+  where
+    validateAndPrintProblem :: Problem -> IO ()
+    validateAndPrintProblem problem = do
+      let (invalidSolutionsWithConstraints, validatedSolutions) = validateProblem problem
+      putStrLn "=== Validated solutions ==="
+      mapM_ (putStrLn . ("- " ++) . show . solutionName) validatedSolutions
+      putStrLn "\n=== Invalid solutions ===\n"
+      mapM_ printInvalidSolutionsWithConstraint invalidSolutionsWithConstraints

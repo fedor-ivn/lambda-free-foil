@@ -59,6 +59,8 @@ library
     , containers
     , free-foil >=0.1.0
     , kind-generics-th
+    , text
+    , tomland
   default-language: Haskell2010
 
 executable free-foil-experiments-exe
@@ -83,6 +85,8 @@ executable free-foil-experiments-exe
     , free-foil >=0.1.0
     , free-foil-experiments
     , kind-generics-th
+    , text
+    , tomland
   default-language: Haskell2010
 
 test-suite free-foil-experiments-test
@@ -108,4 +112,6 @@ test-suite free-foil-experiments-test
     , free-foil >=0.1.0
     , free-foil-experiments
     , kind-generics-th
+    , text
+    , tomland
   default-language: Haskell2010
