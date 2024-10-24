@@ -1,15 +1,19 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- {-# OPTIONS_GHC -ddump-splices #-}
 
@@ -43,6 +47,7 @@ import qualified Control.Monad.Foil as Foil
 import Control.Monad.Foil.Internal as FoilInternal
 import Control.Monad.Foil.TH
 import Control.Monad.Free.Foil
+import Control.Monad.Free.Foil.Generic
 import Control.Monad.Free.Foil.TH
 import Data.Biapplicative (Bifunctor (bimap))
 import Data.Bifunctor.Sum
@@ -50,7 +55,8 @@ import Data.Bifunctor.TH
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.String (IsString (..))
-import Language.Lambda.Syntax.Abs (MetaVarIdent)
+import qualified GHC.Generics as GHC
+import Generics.Kind.TH (deriveGenericK)
 import qualified Language.Lambda.Syntax.Abs as Raw
 import qualified Language.Lambda.Syntax.Layout as Raw
 import qualified Language.Lambda.Syntax.Par as Raw
@@ -68,69 +74,14 @@ import System.Exit (exitFailure)
 
 -- ** Signature
 
--- mkSignature ''Raw.Term ''Raw.VarIdent ''Raw.ScopedTerm ''Raw.Pattern
-data TermSig scope term
-  = LamSig scope
-  | LetSig term scope
-  | AppSig term term
-  | MetaVarSig Raw.MetaVarIdent [term] -- FIXME: this constructor is not generated correctly by mkSignature!
-  | MetaSubstSig Raw.MetaVarIdent term
-  deriving (Functor, Foldable, Traversable)
-
--- data TermSig scope term
---   = LamSig scope
---   | AppSig term term
-
--- deriveZipMatch ''TermSig   -- FIXME: does not work for MetaVarSig
+mkSignature ''Raw.Term ''Raw.VarIdent ''Raw.ScopedTerm ''Raw.Pattern
 deriveBifunctor ''TermSig
 deriveBifoldable ''TermSig
 deriveBitraversable ''TermSig
 
 -- ** Pattern synonyms
 
--- mkPatternSynonyms ''TermSig   -- FIXME: does not work for MetaVarSig
-pattern App :: AST binder TermSig n -> AST binder TermSig n -> AST binder TermSig n
-pattern App f x = Node (AppSig f x)
-
-pattern Lam :: binder n l -> AST binder TermSig l -> AST binder TermSig n
-pattern Lam binder body = Node (LamSig (ScopedAST binder body))
-
-pattern Let :: AST binder TermSig n -> binder n l -> AST binder TermSig l -> AST binder TermSig n
-pattern Let term binder body = Node (LetSig term (ScopedAST binder body))
-
-pattern MetaVar :: Raw.MetaVarIdent -> [AST binder TermSig n] -> AST binder TermSig n
-pattern MetaVar metavar args = Node (MetaVarSig metavar args)
-
-pattern App' :: AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n
-pattern App' f x = Node (L2 (AppSig f x))
-
-pattern Lam' :: binder n l -> AST binder (Sum TermSig q) l -> AST binder (Sum TermSig q) n
-pattern Lam' binder body = Node (L2 (LamSig (ScopedAST binder body)))
-
-pattern Let' :: AST binder (Sum TermSig q) n -> binder n l -> AST binder (Sum TermSig q) l -> AST binder (Sum TermSig q) n
-pattern Let' term binder body = Node (L2 (LetSig term (ScopedAST binder body)))
-
-pattern MetaVar' :: MetaVarIdent -> [AST binder (Sum TermSig q) n] -> AST binder (Sum TermSig q) n
-pattern MetaVar' metavar args = Node (L2 (MetaVarSig metavar args))
-
-pattern MetaSubst' :: MetaVarIdent -> AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n
-pattern MetaSubst' metavar term = Node (L2 (MetaSubstSig metavar term))
-
--- FV( (λ x. x) y )  =  { y }
---
--- λs. λz. s (s z)    :: Term VoidS
---     λz. s (s z)    :: Term n1      --  n1 ~ { s }
---         s (s z)    :: Term n2      --  n2 ~ { s, z }
--- λs                 :: NameBinder VoidS n1
---     λz             :: NameBinder n1 n2
---
--- pattern Lam :: Foil.NameBinder n l -> AST TermSig l -> AST TermSig n
--- pattern Lam :: Foil.NameBinder n l -> Term l -> Term n
--- pattern Lam b x = Node (LamSig (ScopedAST b x))
---
--- pattern App :: AST TermSig n -> AST TermSig n -> AST TermSig n
--- pattern App :: Term n -> Term n -> Term n
--- pattern App x0 x1 = Node (AppSig x0 x1)
+mkPatternSynonyms ''TermSig
 
 -- ** Conversion helpers
 
@@ -144,14 +95,64 @@ deriveCoSinkable ''Raw.VarIdent ''Raw.Pattern
 mkToFoilPattern ''Raw.VarIdent ''Raw.Pattern
 mkFromFoilPattern ''Raw.VarIdent ''Raw.Pattern
 
+deriveUnifiablePattern ''Raw.VarIdent ''Raw.Pattern
+
+deriving instance GHC.Generic (TermSig scope term)
+
+deriveGenericK ''TermSig
+
+-- | Match 'Raw.Ident' via 'Eq'.
+instance ZipMatchK Raw.VarIdent where zipMatchWithK = zipMatchViaEq
+
+instance ZipMatchK Raw.MetaVarIdent where zipMatchWithK = zipMatchViaEq
+
+instance ZipMatch TermSig where
+  zipMatch = genericZipMatch2
+
+-- ** Pattern synonyms
+
+pattern App' :: AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n
+pattern App' f x = Node (L2 (AppSig f x))
+
+pattern Lam' :: binder n l -> AST binder (Sum TermSig q) l -> AST binder (Sum TermSig q) n
+pattern Lam' binder body = Node (L2 (LamSig (ScopedAST binder body)))
+
+pattern Let' :: AST binder (Sum TermSig q) n -> binder n l -> AST binder (Sum TermSig q) l -> AST binder (Sum TermSig q) n
+pattern Let' term binder body = Node (L2 (LetSig term (ScopedAST binder body)))
+
+pattern MetaVar' :: Raw.MetaVarIdent -> [AST binder (Sum TermSig q) n] -> AST binder (Sum TermSig q) n
+pattern MetaVar' metavar args = Node (L2 (MetaVarSig metavar args))
+
+-- pattern MetaSubst' :: MetaVarIdent -> AST binder (Sum TermSig q) n -> AST binder (Sum TermSig q) n
+-- pattern MetaSubst' metavar term = Node (L2 (MetaSubstSig metavar term))
+
+-- FV( (λ x. x) y )  =  { y }
+--
+-- λs. λz. s (s z)    :: Term VoidS
+--     λz. s (s z)    :: Term n1      --  n1 ~ { s }
+--         s (s z)    :: Term n2      --  n2 ~ { s, z }
+-- λs                 :: NameBinder VoidS n1
+--     λz             :: NameBinder n1 n2
+--
+
 -- * User-defined code
 
 data MetaAppSig metavar scope term = MetaAppSig metavar [term]
-  deriving (Functor, Foldable, Traversable)
+  deriving (Functor, Foldable, Traversable, GHC.Generic)
 
 deriveBifunctor ''MetaAppSig
 deriveBifoldable ''MetaAppSig
 deriveBitraversable ''MetaAppSig
+
+deriveGenericK ''MetaAppSig
+
+instance (ZipMatchK a) => ZipMatch (MetaAppSig a) where
+  zipMatch = genericZipMatch2
+
+-- >>> a = "λy.(λx.λy.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
+-- >>> b = "λz.(λx.λy.X[x, y X[y, x]])z" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
+-- >>> alphaEquiv Foil.emptyScope a b
+-- True
 
 pattern MetaApp :: metavar -> [AST binder (Sum p (MetaAppSig metavar)) n] -> AST binder (Sum p (MetaAppSig metavar)) n
 pattern MetaApp metavar args = Node (R2 (MetaAppSig metavar args))
@@ -182,14 +183,14 @@ newtype MetaSubsts sig metavar metavar' = MetaSubsts
 
 -- >>> subst = "X [x0, x1] ↦ x1 x0" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 -- >>> term = "λg. λa. λw. X[g, λz. z a]"
--- >>> nfSOASWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
+-- >>> nfMetaTermWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
 -- λ x0 . λ x1 . λ x2 . x0 x1
 -- >>> subst = "X [x, y] ↦ (λ z . y z) x" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 -- >>> term = "λg. λa. λw. X[g, λz. z a]"
--- >>> nfSOASWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
+-- >>> nfMetaTermWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
 -- λ x0 . λ x1 . λ x2 . x0 x1
 -- >>> term = "λg. λa. X[g, λz. z a]"
--- >>> nfSOASWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
+-- >>> nfMetaTermWithEmptyScope $ applyMetaSubsts id Foil.emptyScope (MetaSubsts [subst]) term
 -- λ x0 . λ x1 . x0 x1
 applyMetaSubsts ::
   (Bifunctor sig, Eq metavar, Bifunctor (MetaAppSig metavar'), Distinct n) =>
@@ -234,35 +235,35 @@ applyMetaSubsts rename scope substs = \case
       where
         newScope = Foil.extendScopePattern binder scope'
 
-{-# COMPLETE Var, Lam', App', Let', MetaVar', MetaSubst', MetaApp #-}
+{-# COMPLETE Var, Lam', App', Let', MetaVar', MetaApp #-}
 
-nfSOAS ::
+nfMetaTerm ::
   (Foil.Distinct n) =>
   Foil.Scope n ->
-  SOAS metavar TermSig n ->
-  SOAS metavar TermSig n
-nfSOAS scope = \case
+  MetaTerm metavar n ->
+  MetaTerm metavar n
+nfMetaTerm scope = \case
   Var x -> Var x
   Lam' binder body
     | Foil.Distinct <- Foil.assertDistinct binder ->
         let extendedScope = Foil.extendScopePattern binder scope
-         in Lam' binder (nfSOAS extendedScope body)
+         in Lam' binder (nfMetaTerm extendedScope body)
   App' f x ->
-    case nfSOAS scope f of
+    case nfMetaTerm scope f of
       Lam' binder body ->
         let subst = matchPattern binder x
-         in nfSOAS scope (substitute scope subst body)
-      f' -> App' f' (nfSOAS scope x)
+         in nfMetaTerm scope (substitute scope subst body)
+      f' -> App' f' (nfMetaTerm scope x)
   Let' value binder body ->
     let subst = matchPattern binder value
         body' = substitute scope subst body
-     in nfSOAS scope body'
-  MetaVar' metavar args -> MetaVar' metavar (map (nfSOAS scope) args)
-  MetaSubst' metavar term -> MetaSubst' metavar (nfSOAS scope term)
-  MetaApp metavar args -> MetaApp metavar (map (nfSOAS scope) args)
+     in nfMetaTerm scope body'
+  MetaVar' metavar args -> MetaVar' metavar (map (nfMetaTerm scope) args)
+  -- MetaSubst' metavar term -> MetaSubst' metavar (nfMetaTerm scope term)
+  MetaApp metavar args -> MetaApp metavar (map (nfMetaTerm scope) args)
 
-nfSOASWithEmptyScope :: SOAS metavar TermSig VoidS -> SOAS metavar TermSig VoidS
-nfSOASWithEmptyScope = nfSOAS Foil.emptyScope
+nfMetaTermWithEmptyScope :: SOAS metavar TermSig VoidS -> SOAS metavar TermSig VoidS
+nfMetaTermWithEmptyScope = nfMetaTerm Foil.emptyScope
 
 nameMapToSubsts :: Foil.NameMap i (e o) -> Foil.Substitution e i o
 nameMapToSubsts nameMap =
@@ -271,7 +272,7 @@ nameMapToSubsts nameMap =
 -- ** Conversion helpers for 'MetaSubst'
 
 toMetaSubst :: Raw.MetaSubst -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
-toMetaSubst (Raw.MetaSubst metavar vars term) =
+toMetaSubst (Raw.AMetaSubst metavar vars term) =
   withMetaSubstVars vars Foil.emptyScope Map.empty NameBinderListEmpty $ \scope env binderList ->
     let term' = toTerm scope env (getTermFromScopedTerm term)
      in MetaSubst (metavar, MetaAbs binderList (toMetaTerm term'))
@@ -307,13 +308,33 @@ fromMetaSubst :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent -> Raw.Meta
 fromMetaSubst (MetaSubst (metavar, MetaAbs binderList term)) =
   let term' = Raw.AScopedTerm $ fromTerm $ fromMetaTerm term
       idents = toVarIdentList binderList
-   in Raw.MetaSubst metavar idents term'
-  where
-    toVarIdentList :: NameBinderList i n -> [Raw.VarIdent]
-    toVarIdentList NameBinderListEmpty = []
-    toVarIdentList (NameBinderListCons x xs) =
-      let ident = Raw.VarIdent $ "x" ++ show (Foil.nameOf x)
-       in ident : toVarIdentList xs
+   in Raw.AMetaSubst metavar idents term'
+
+toVarIdentList :: NameBinderList i n -> [Raw.VarIdent]
+toVarIdentList NameBinderListEmpty = []
+toVarIdentList (NameBinderListCons x xs) =
+  let ident = Raw.VarIdent $ "x" ++ show (Foil.nameOf x)
+   in ident : toVarIdentList xs
+
+data UnificationConstraint where
+  UnificationConstraint ::
+    (Distinct n) =>
+    Scope n ->
+    NameBinderList Foil.VoidS n ->
+    MetaTerm Raw.MetaVarIdent n ->
+    MetaTerm Raw.MetaVarIdent n ->
+    UnificationConstraint
+
+toUnificationConstraint :: Raw.UnificationConstraint -> UnificationConstraint
+toUnificationConstraint (Raw.AUnificationConstraint vars lhs rhs) =
+  withMetaSubstVars vars Foil.emptyScope Map.empty NameBinderListEmpty $ \scope env binders ->
+    let toMetaTerm' = toMetaTerm . toTerm scope env . getTermFromScopedTerm
+     in UnificationConstraint scope binders (toMetaTerm' lhs) (toMetaTerm' rhs)
+
+fromUnificationConstraint :: UnificationConstraint -> Raw.UnificationConstraint
+fromUnificationConstraint (UnificationConstraint _ binders lhs rhs) =
+  let fromMetaTerm' = Raw.AScopedTerm . fromTerm . fromMetaTerm
+   in Raw.AUnificationConstraint (toVarIdentList binders) (fromMetaTerm' lhs) (fromMetaTerm' rhs)
 
 -- ** Conversion helpers for 'MetaTerm'
 
@@ -378,25 +399,32 @@ instance IsString (Term Foil.VoidS) where
   fromString = unsafeParseTerm
 
 instance Show (MetaTerm Raw.MetaVarIdent n) where
-  show :: MetaTerm MetaVarIdent n -> String
+  show :: MetaTerm Raw.MetaVarIdent n -> String
   show = Raw.printTree . fromTerm . fromMetaTerm
 
--- >>> "λy.(λx.λy.X[x, y X[y, x]])y" :: MetaTerm Raw.MetaVarIdent Foil.VoidS
+-- >>> a = "λy.(λx.λy.X[x, y X[y, x]])y" :: Term Foil.VoidS
+-- >>> b = "λz.(λx.λy.X[x, y X[y, x]])z" :: Term Foil.VoidS
+-- >>> alphaEquiv Foil.emptyScope a b
+-- No instance for `UnifiablePattern FoilPattern'
+--   arising from a use of `alphaEquiv'
+-- In the expression: alphaEquiv emptyScope a b
+-- In an equation for `it_a65v6': it_a65v6 = alphaEquiv emptyScope a b
+
 -- λ x0 . (λ x1 . λ x2 . X [x1, x2 X [x2, x1]]) x0
 instance IsString (MetaTerm Raw.MetaVarIdent Foil.VoidS) where
-  fromString :: String -> MetaTerm MetaVarIdent VoidS
+  fromString :: String -> MetaTerm Raw.MetaVarIdent VoidS
   fromString = toMetaTerm . unsafeParseTerm
 
 -- >>> "X [ x, y, z ] ↦ λy.(λx.λy.X[x, y X[y, x]])y" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 -- X [x0, x1, x2] ↦ λ x3 . (λ x4 . λ x5 . X [x4, x5 X [x5, x4]]) x3
 instance Show (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
-  show :: MetaSubst TermSig MetaVarIdent MetaVarIdent -> String
+  show :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent -> String
   show = Raw.printTree . fromMetaSubst
 
 -- >>> "X [ x, y ] ↦ λ x . y" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
 -- X [x0, x1] ↦ λ x2 . x1
 instance IsString (MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent) where
-  fromString :: String -> MetaSubst TermSig MetaVarIdent MetaVarIdent
+  fromString :: String -> MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
   fromString = unsafeParseMetaSubst
 
 unsafeParseTerm :: String -> Term Foil.VoidS
@@ -412,6 +440,24 @@ unsafeParseMetaSubst input =
   case Raw.pMetaSubst tokens of
     Left err -> error err
     Right subst -> toMetaSubst subst
+  where
+    tokens = Raw.resolveLayout False (Raw.myLexer input)
+
+-- >>> "∀ m, n. Y[m, X[n, m]] = (λ x . m (x n)) m" :: UnificationConstraint
+-- ∀ x0, x1 . Y [x0, X [x1, x0]] = (λ x2 . x0 (x2 x1)) x0
+instance IsString UnificationConstraint where
+  fromString :: String -> UnificationConstraint
+  fromString = unsafeParseUnificationConstraint
+
+instance Show UnificationConstraint where
+  show :: UnificationConstraint -> String
+  show = Raw.printTree . fromUnificationConstraint
+
+unsafeParseUnificationConstraint :: String -> UnificationConstraint
+unsafeParseUnificationConstraint input =
+  case Raw.pUnificationConstraint tokens of
+    Left err -> error err
+    Right problem -> toUnificationConstraint problem
   where
     tokens = Raw.resolveLayout False (Raw.myLexer input)
 
@@ -506,3 +552,20 @@ main = do
     showTree tree = do
       putStrLn $ "\n[Abstract Syntax]\n\n" ++ show tree
       putStrLn $ "\n[Linearized tree]\n\n" ++ Raw.printTree tree
+
+-- ** Test framework implementation
+
+-- >>> constraint = "∀ g, a, w. X[g, λz. z a] = g a" :: UnificationConstraint
+-- >>> subst = "X [x, y] ↦ (λ z . y z) x" :: MetaSubst TermSig Raw.MetaVarIdent Raw.MetaVarIdent
+-- >>> isSolved (solveUnificationConstraint constraint (MetaSubsts [subst]))
+-- True
+solveUnificationConstraint ::
+  UnificationConstraint ->
+  MetaSubsts TermSig Raw.MetaVarIdent Raw.MetaVarIdent ->
+  UnificationConstraint
+solveUnificationConstraint (UnificationConstraint scope binders lhs rhs) substs =
+  let solve = nfMetaTerm scope . applyMetaSubsts id scope substs
+   in UnificationConstraint scope binders (solve lhs) (solve rhs)
+
+isSolved :: UnificationConstraint -> Bool
+isSolved (UnificationConstraint scope _ lhs rhs) = alphaEquiv scope lhs rhs
