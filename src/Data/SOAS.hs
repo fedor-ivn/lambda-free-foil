@@ -33,6 +33,7 @@ module Data.SOAS (
   match,
   push,
   toNameMap,
+  renameNameMap,
   applyMetaSubsts,
 
   -- * Utils
@@ -51,6 +52,7 @@ import Data.Bifunctor
 import Data.Bifunctor.Sum
 import Data.Bifunctor.TH
 import Data.Bitraversable (Bitraversable (bitraverse))
+import qualified Data.IntMap.Strict as IntMap
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (mapMaybe)
@@ -234,6 +236,11 @@ toNameMap nameMap Foil.NameBinderListEmpty [] = nameMap
 toNameMap nameMap (Foil.NameBinderListCons binder rest) (x : xs) =
   toNameMap (Foil.addNameBinder binder x nameMap) rest xs
 toNameMap _ _ _ = error "mismatched name list and argument list"
+
+-- | Transport a name map along an injective renaming of its scope.
+renameNameMap :: (Foil.Name n -> Foil.Name l) -> Foil.NameMap n a -> Foil.NameMap l a
+renameNameMap rename (Foil.NameMap entries) =
+  Foil.NameMap (IntMap.mapKeys (Foil.nameId . rename . Foil.UnsafeName) entries)
 
 -- | Read the type annotation of a term, consulting the context for variables.
 termType :: Foil.NameMap n t -> AST binder (AnnSig t sig) n -> t
@@ -444,15 +451,15 @@ matchScoped
                 varTypes' = addBinderTypes binder ann varTypes
                 rhs' = Foil.liftRM scope' (Foil.fromNameBinderRenaming rename) rhs
              in match scope' metavarTypes varTypes' lhs rhs'
-      Foil.RenameBothBinders{} -> error "not implemented"
-      -- Foil.RenameBothBinders binders rename1 rename2 ->
-      -- case trace "rename both binders" Foil.assertDistinct binders of
-      --   Foil.Distinct -> undefined
-      -- let scope' = Foil.extendScopePattern binders scope
-      --     varTypes' = addBinderTypes binder binderTypeLhs varTypes
-      --     lhs' = Foil.liftRM scope' (Foil.fromNameBinderRenaming rename1) lhs
-      --     rhs' = Foil.liftRM scope' (Foil.fromNameBinderRenaming rename2) rhs
-      --  in match scope' metavarTypes varTypes' lhs' rhs'
+      Foil.RenameBothBinders common renameLeft renameRight ->
+        case Foil.assertDistinct common of
+          Foil.Distinct ->
+            let scope' = Foil.extendScopePattern common scope
+                rename = Foil.fromNameBinderRenaming renameLeft
+                varTypes' = renameNameMap rename (addBinderTypes binder ann varTypes)
+                lhs' = Foil.liftRM scope' rename lhs
+                rhs' = Foil.liftRM scope' (Foil.fromNameBinderRenaming renameRight) rhs
+             in match scope' metavarTypes varTypes' lhs' rhs'
       Foil.NotUnifiable -> trace "not unifiable" []
 
 -- | A special case of 'match', when LHS is a parametrised metavariable.
