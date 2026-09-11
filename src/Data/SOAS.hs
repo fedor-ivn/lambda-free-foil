@@ -52,6 +52,7 @@ import Data.Bifunctor
 import Data.Bifunctor.Sum
 import Data.Bifunctor.TH
 import Data.Bitraversable (Bitraversable (bitraverse))
+import Data.Coerce (coerce)
 import qualified Data.IntMap.Strict as IntMap
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -107,8 +108,12 @@ instance
     t == t' && Foil.unifyInPattern binder binder'
 
 instance
-  (Foil.UnifiablePattern binder)
+  (Eq t, Foil.UnifiablePattern binder)
   => Foil.UnifiablePattern (AnnBinder t binder)
+  where
+  unifyPatterns (AnnBinder lhs ty) (AnnBinder rhs ty')
+    | ty == ty' = coerce (Foil.unifyPatterns lhs rhs)
+    | otherwise = Foil.NotUnifiable
 
 class TypedBinder binder t where
   addBinderTypes
@@ -251,6 +256,7 @@ termType _ (Node (AnnSig _ ty)) = ty
 -- The empty collection has one solution: the empty substitution.
 combineMetaSubsts
   :: ( Eq metavar
+     , Eq t
      , Bitraversable sig
      , ZipMatchK (Sum sig ext)
      , Foil.SinkableK binder
@@ -264,8 +270,10 @@ combineMetaSubsts = foldr (mapMaybe . combine) [MetaSubsts []]
  where
   combine (MetaSubsts xs) (MetaSubsts ys)
     | conflicts = trace "there are conflicts" Nothing
-    | otherwise = trace "no conflicts" return (MetaSubsts (xs ++ filter (\(MetaSubst (m, _)) -> m `notElem` map (fst . metaSubst) xs) ys))
+    | otherwise = trace "no conflicts" $
+        return (MetaSubsts (xs ++ filter isNew ys))
    where
+    isNew (MetaSubst (m, _)) = m `notElem` map (fst . metaSubst) xs
     conflicts = or $ do
       MetaSubst (m, MetaAbs binders body) <- xs
       MetaSubst (m', MetaAbs binders' body') <- ys

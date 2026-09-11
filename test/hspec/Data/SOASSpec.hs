@@ -184,6 +184,11 @@ spec = do
     it "checks binder annotations even when the body ignores them" $ do
       let term ty = Node' (Bind (scoped Foil.emptyScope [0] [ty] $ \_ _ -> constant A 0)) A
       check [] (term A) (term B) []
+    it "checks binder annotations when merging repeated assignments" $ do
+      let term ty = Node' (Bind (scoped Foil.emptyScope [0] [ty] $ \_ _ -> constant A 0)) A
+      check [(0, ([], A))]
+        (Node' (Pair (MetaApp 0 [] A) (MetaApp 0 [] A)) (Product A A))
+        (Node' (Pair (term A) (term B)) (Product A A)) []
     it "renames both sides of a multi-variable binding position" $ do
       let term ids = Node' (Bind (scoped2 Foil.emptyScope ids [A,B] $ \_ x y ->
             Node' (Pair x y) (Product A B))) (Product A B)
