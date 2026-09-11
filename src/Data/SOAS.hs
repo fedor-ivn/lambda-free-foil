@@ -235,9 +235,8 @@ toNameMap nameMap (Foil.NameBinderListCons binder rest) (x : xs) =
   toNameMap (Foil.addNameBinder binder x nameMap) rest xs
 toNameMap _ _ _ = error "mismatched name list and argument list"
 
--- | Combine (compose) metavariable substitutions.
---
--- TODO: refactor
+-- | Combine compatible simultaneous substitutions, keeping one entry per name.
+-- The empty collection has one solution: the empty substitution.
 combineMetaSubsts
   :: ( Eq metavar
      , Bitraversable sig
@@ -249,12 +248,11 @@ combineMetaSubsts
      )
   => [MetaSubsts (AnnBinder t binder) (AnnSig t (Sum sig ext)) metavar t]
   -> [MetaSubsts (AnnBinder t binder) (AnnSig t (Sum sig ext)) metavar t]
-combineMetaSubsts [] = []
-combineMetaSubsts (subst : substs) = foldr (mapMaybe . combine) [subst] substs
+combineMetaSubsts = foldr (mapMaybe . combine) [MetaSubsts []]
  where
   combine (MetaSubsts xs) (MetaSubsts ys)
     | conflicts = trace "there are conflicts" Nothing
-    | otherwise = trace "no conflicts" return (MetaSubsts (xs ++ ys))
+    | otherwise = trace "no conflicts" return (MetaSubsts (xs ++ filter (\(MetaSubst (m, _)) -> m `notElem` map (fst . metaSubst) xs) ys))
    where
     conflicts = or $ do
       MetaSubst (m, MetaAbs binders body) <- xs
@@ -268,7 +266,23 @@ combineMetaSubsts (subst : substs) = foldr (mapMaybe . combine) [subst] substs
                 let scope = Foil.extendScopePattern binders Foil.emptyScope
                  in not (alphaEquiv scope body body')
           Foil.NotUnifiable -> True
-          _ -> error "unexpected renaming"
+          Foil.RenameLeftNameBinder _ rename ->
+            case Foil.assertDistinct binders' of
+              Foil.Distinct ->
+                let scope = Foil.extendScopePattern binders' Foil.emptyScope
+                 in not (alphaEquiv scope (Foil.liftRM scope (Foil.fromNameBinderRenaming rename) body) body')
+          Foil.RenameRightNameBinder _ rename ->
+            case Foil.assertDistinct binders of
+              Foil.Distinct ->
+                let scope = Foil.extendScopePattern binders Foil.emptyScope
+                 in not (alphaEquiv scope body (Foil.liftRM scope (Foil.fromNameBinderRenaming rename) body'))
+          Foil.RenameBothBinders common renameLeft renameRight ->
+            case Foil.assertDistinct common of
+              Foil.Distinct ->
+                let scope = Foil.extendScopePattern common Foil.emptyScope
+                 in not (alphaEquiv scope
+                      (Foil.liftRM scope (Foil.fromNameBinderRenaming renameLeft) body)
+                      (Foil.liftRM scope (Foil.fromNameBinderRenaming renameRight) body'))
 
 -- | Match left-hand side (with metavariables) against the rigid right-hand
 -- side.
@@ -325,11 +339,11 @@ match scope metavarTypes varTypes lhs rhs =
               $ \scope' binderList _ ->
                 trace
                   "matching metavar"
-                  map
-                  ( \(term, MetaSubsts substs) ->
+                  concatMap
+                  ( \(term, substs) ->
                       let metaAbs = MetaAbs binderList term
                           subst = MetaSubst (metavar, metaAbs)
-                       in MetaSubsts (subst : substs)
+                       in combineMetaSubsts [MetaSubsts [subst], substs]
                   )
                   ( matchMetavar
                       scope'
