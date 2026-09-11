@@ -235,6 +235,11 @@ toNameMap nameMap (Foil.NameBinderListCons binder rest) (x : xs) =
   toNameMap (Foil.addNameBinder binder x nameMap) rest xs
 toNameMap _ _ _ = error "mismatched name list and argument list"
 
+-- | Read the type annotation of a term, consulting the context for variables.
+termType :: Foil.NameMap n t -> AST binder (AnnSig t sig) n -> t
+termType types (Var x) = Foil.lookupName x types
+termType _ (Node (AnnSig _ ty)) = ty
+
 -- | Combine compatible simultaneous substitutions, keeping one entry per name.
 -- The empty collection has one solution: the empty substitution.
 combineMetaSubsts
@@ -323,14 +328,16 @@ match
   -> AST (AnnBinder t binder) (AnnSig t (Sum sig ext)) n
   -- ^ The right hand side (rigid)
   -> [MetaSubsts (AnnBinder t binder) (AnnSig t (Sum sig ext)) metavar t]
-match scope metavarTypes varTypes lhs rhs =
-  trace "matching non-scoped lhs and rhs" $
+match scope metavarTypes varTypes lhs rhs
+  | termType varTypes lhs /= termType varTypes rhs = []
+  | otherwise = trace "matching non-scoped lhs and rhs" $
     case (lhs, rhs) of
       (Var x, Var y) | x == y -> trace "matched same vars" return (MetaSubsts [])
       (Node (AnnSig (R2 (MetaAppSig metavar args)) metavarType), _) ->
         case trace "looking up metavar" Map.lookup metavar metavarTypes of
-          -- todo: should we check here for type?
-          Just (argTypes, _) ->
+          Just (argTypes, resultType)
+            | resultType == metavarType
+            , argTypes == map (termType varTypes) args ->
             withFreshNameBinderList
               argTypes
               Foil.emptyScope
@@ -412,8 +419,9 @@ matchScoped
   metavarTypes
   varTypes
   (ScopedAST (AnnBinder binder ann) lhs)
-  (ScopedAST (AnnBinder binder' ann') rhs) =
-    case trace "matching scoped terms" Foil.unifyPatterns binder binder' of
+  (ScopedAST (AnnBinder binder' ann') rhs)
+    | ann /= ann' = []
+    | otherwise = case trace "matching scoped terms" Foil.unifyPatterns binder binder' of
       -- \x.t1 = \x.t2
       Foil.SameNameBinders _ ->
         case trace "same name binders" Foil.assertDistinct binder of
@@ -498,7 +506,9 @@ matchMetavar
        , MetaSubsts (AnnBinder t binder) (AnnSig t (Sum sig ext)) metavar t
        )
      ]
-matchMetavar metavarScope metavarTypes metavarNameBinders scope varTypes args expectedType rhs =
+matchMetavar metavarScope metavarTypes metavarNameBinders scope varTypes args expectedType rhs
+  | expectedType /= termType varTypes rhs = []
+  | otherwise =
   let projections = project metavarNameBinders args
       imitations = trace "imitate on: " $ case rhs of
         Var _ -> []
@@ -512,16 +522,16 @@ matchMetavar metavarScope metavarTypes metavarNameBinders scope varTypes args ex
                   scope
                   varTypes
                   args
-                  expectedType
               )
-              ( matchMetavar
+              ( \child -> matchMetavar
                   metavarScope
                   metavarTypes
                   metavarNameBinders
                   scope
                   varTypes
                   args
-                  expectedType
+                  (termType varTypes child)
+                  child
               )
               sig
           let term = Node (bimap fst fst traversedSig)
@@ -577,8 +587,6 @@ matchMetavarScoped
   -> [TypedSOAS binder metavar sig n t]
   -- ^ A list of arguments of the parametrised metavariable on the left-hand
   -- side.
-  -> t
-  -- ^ The expected type of the right-hand side.
   -> ScopedAST (AnnBinder t binder) (AnnSig t (Sum sig ext)) n
   -> [ ( ScopedAST (AnnBinder t binder) (AnnSig t (Sum sig ext)) m
        , MetaSubsts (AnnBinder t binder) (AnnSig t (Sum sig ext)) metavar t
@@ -591,7 +599,6 @@ matchMetavarScoped
   scope
   varTypes
   args
-  expectedType
   (ScopedAST (AnnBinder binder binderType) rhs) =
     trace "matching metavar scoped" $
       case (Foil.assertExt binder, Foil.assertDistinct binder) of
@@ -616,7 +623,7 @@ matchMetavarScoped
                       scope'
                       varTypes'
                       args'
-                      expectedType
+                      (termType varTypes' rhs)
                       rhs
                in map (first (ScopedAST (AnnBinder metavarBinder binderType))) result
 
