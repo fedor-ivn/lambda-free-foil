@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 
 module Language.Lambda.ImplSpec where
@@ -16,13 +17,20 @@ import System.Exit (exitFailure)
 import Test.Hspec
 
 import Data.Maybe (fromMaybe)
-import Data.SOAS (AnnBinder, AnnSig, MetaAbs (..), MetaAppSig, MetaSubsts (..), push)
-import qualified Data.Map as Map
-import Language.Lambda.Config (Config (..), Problem (..), Solution (..))
-import Language.Lambda.Framework (
-  SolutionComparison (..),
-  solveByMatchingAndCompareToReferenceSolutionsWith,
+import Data.SOAS (
+  AnnBinder,
+  AnnSig,
+  MetaAbs (..),
+  MetaAppSig,
+  MetaSubsts (..),
+  applyMetaSubsts,
+  match,
+  push,
+  withFreshNameBinderList,
+  pattern MetaApp,
  )
+import qualified Data.Map as Map
+import Language.Lambda.Config (Config (..), Problem (..), Solution (..), CanonicalConstraint (..))
 import qualified Language.Lambda.Framework as Framework
 import qualified Language.Lambda.Impl as Impl
 import Language.Lambda.RawConfig (decodeConfigFile)
@@ -44,15 +52,38 @@ projection ids index = go Foil.emptyScope Foil.NameBinderListEmpty ids
 handleErr :: (Show e) => Either e a -> IO a
 handleErr = either (\err -> print err >> exitFailure) pure
 
-foo :: SpecWith ()
-foo = describe "matching tests" $ do
-  Config{..} <- runIO $ decodeConfigFile "problems/matching.toml" >>= handleErr
-  forM_ (zip [1 ..] configProblems) $ \(i, problem) -> do
-    describe ("problem #" <> show i) $ do
-      result <- runIO $ handleErr (solveByMatchingAndCompareToReferenceSolutionsWith problem)
-      forM_ (zip [1 ..] result) $ \(j, (_solution, comparison)) -> do
-        it ("solution #" <> show j <> " should be equivalent to a reference solution") $
-          comparison `shouldBe` Equivalent
+-- Compare every original metavariable, interpreting missing entries as identity.
+-- This oracle uses substitution and alpha-equivalence, never matching itself.
+equivalentSubstitutions :: Impl.MetavarBinders -> Impl.MetaSubsts' -> Impl.MetaSubsts' -> Bool
+equivalentSubstitutions declarations lhs rhs = all compareAt (Map.toList declarations)
+ where
+  compareAt (m, (args, resultType)) =
+    withFreshNameBinderList args Foil.emptyScope Foil.NameBinderListEmpty Foil.emptyNameMap $
+      \scope binders _ ->
+        let probe = MetaApp m (map Var (Foil.namesOfPattern binders)) resultType
+         in Impl.alphaEquiv scope
+              (applyMetaSubsts scope lhs probe) (applyMetaSubsts scope rhs probe)
+
+matchingTests :: Spec
+matchingTests = describe "matching fixtures" $
+  forM_ ["problems/matching.toml", "problems/matching-regressions.toml"] $ \path ->
+    describe path $ do
+      Config{..} <- runIO $ decodeConfigFile path >>= handleErr
+      forM_ (zip [1 :: Int ..] configProblems) $ \(i, Problem{..}) ->
+        it ("problem #" <> show i <> " has exactly the expected solutions") $
+          case problemConstraints of
+            [CanonicalConstraint binders binderTypes lhs rhs] -> do
+              let scope = Foil.extendScopePattern binders Foil.emptyScope
+                  actual = match scope problemMetavarBinders binderTypes lhs rhs
+                  expected = map solutionSubstitutions problemSolutions
+                  equivalent = equivalentSubstitutions problemMetavarBinders
+              length actual `shouldBe` length expected
+              forM_ expected $ \reference ->
+                any (equivalent reference) actual `shouldBe` True
+              forM_ actual $ \solution -> do
+                any (equivalent solution) expected `shouldBe` True
+                Impl.alphaEquiv scope (applyMetaSubsts scope solution lhs) rhs `shouldBe` True
+            _ -> expectationFailure "Each matching fixture must contain one constraint"
 
 spec :: Spec
 spec = do
@@ -64,7 +95,7 @@ spec = do
           it (Text.unpack $ fromMaybe "" solutionName) $ do
             Framework.validateSolution problemConstraints solution `shouldSatisfy` isRight
 
-  foo
+  matchingTests
 
   describe "matching metavariable abstractions" $ do
     let types = [Raw.Base (Raw.VarIdent "a"), Raw.Base (Raw.VarIdent "b")]

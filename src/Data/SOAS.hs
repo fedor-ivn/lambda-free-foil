@@ -317,6 +317,11 @@ combineMetaSubsts = foldr (mapMaybe . combine) [MetaSubsts []]
 --   2. M[z₁, z₂] ↦ z₂
 --
 -- Hence, this function produces a list of possible substitutions.
+--
+-- Inputs must be well-scoped, with complete variable contexts and correct
+-- operator annotations. Matching checks the types of the compared terms and
+-- the declared arities and types of metavariables. It does not implement an
+-- object-language type checker.
 match
   :: ( Bitraversable sig
      , ZipMatchK sig
